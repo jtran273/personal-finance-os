@@ -1,28 +1,23 @@
 "use client";
 
 import {
-  ArrowDown,
   ArrowRight,
   ArrowUp,
   Bolt,
-  CalendarDays,
   Check,
   ChevronDown,
   ChevronRight,
   Flag,
-  Home,
   Inbox,
-  Landmark,
-  List,
+  LogOut,
   Plus,
   Repeat,
   Search,
-  Settings,
   Sparkles,
-  X,
-  type LucideIcon
+  X
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   BASE_DATE,
   ledgerData,
@@ -33,7 +28,7 @@ import {
   type TransactionSplit
 } from "./data";
 
-type Route = "today" | "transactions" | "review" | "recurring" | "accounts";
+export type LedgerRoute = "dashboard" | "transactions" | "review" | "recurring" | "accounts" | "settings";
 type Period = "week" | "month" | "year";
 
 interface LedgerContext {
@@ -41,17 +36,20 @@ interface LedgerContext {
   updateTxn: (id: string, patch: Partial<LedgerTransaction>) => void;
   setP2pModal: (txn: LedgerTransaction) => void;
   setSelectedTxn: (id: string) => void;
-  setRoute: (route: Route) => void;
+  setRoute: (route: LedgerRoute) => void;
   reviewItems: LedgerTransaction[];
 }
 
-const navItems: Array<{ id: Route; label: string; icon: LucideIcon }> = [
-  { id: "today", label: "Today", icon: Home },
-  { id: "transactions", label: "Transactions", icon: List },
-  { id: "review", label: "Review", icon: Inbox },
-  { id: "recurring", label: "Recurring", icon: Repeat },
-  { id: "accounts", label: "Accounts", icon: Landmark }
-];
+const LedgerDataContext = createContext<LedgerContext | null>(null);
+
+export const ledgerRouteHref: Record<LedgerRoute, string> = {
+  dashboard: "/dashboard",
+  transactions: "/transactions",
+  review: "/review",
+  recurring: "/recurring",
+  accounts: "/accounts",
+  settings: "/settings"
+};
 
 const formatMoney = (n: number, opts: { signed?: boolean; compact?: boolean } = {}) => {
   const abs = Math.abs(n);
@@ -99,8 +97,8 @@ const reasonExplanation = (reason: ReviewReason | null) => {
   }[reason];
 };
 
-export function LedgerApp() {
-  const [route, setRoute] = useState<Route>("today");
+export function LedgerProvider({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [selectedTxn, setSelectedTxn] = useState<string | null>(null);
   const [p2pModal, setP2pModal] = useState<LedgerTransaction | null>(null);
   const [txns, setTxns] = useState(ledgerData.txns);
@@ -108,6 +106,10 @@ export function LedgerApp() {
   const updateTxn = useCallback((id: string, patch: Partial<LedgerTransaction>) => {
     setTxns((prev) => prev.map((txn) => (txn.id === id ? { ...txn, ...patch } : txn)));
   }, []);
+
+  const setRoute = useCallback((route: LedgerRoute) => {
+    router.push(ledgerRouteHref[route]);
+  }, [router]);
 
   const reviewItems = useMemo(
     () => txns
@@ -128,92 +130,33 @@ export function LedgerApp() {
   const selected = selectedTxn ? txns.find((txn) => txn.id === selectedTxn) : null;
 
   return (
-    <div className="ledger-app">
-      <Sidebar route={route} setRoute={setRoute} reviewCount={reviewItems.length} />
-      <main className="main">
-        <TopBar route={route} />
-        <div className="page">
-          {route === "today" && <TodayView ctx={ctx} />}
-          {route === "transactions" && <TransactionsView ctx={ctx} />}
-          {route === "review" && <ReviewView ctx={ctx} />}
-          {route === "recurring" && <RecurringView />}
-          {route === "accounts" && <AccountsView />}
-        </div>
-      </main>
+    <LedgerDataContext.Provider value={ctx}>
+      {children}
       {p2pModal && <P2PModal txn={p2pModal} onClose={() => setP2pModal(null)} ctx={ctx} />}
       {selected && <TxnDetail txn={selected} onClose={() => setSelectedTxn(null)} ctx={ctx} />}
-    </div>
+    </LedgerDataContext.Provider>
   );
 }
 
-function Sidebar({ route, setRoute, reviewCount }: { route: Route; setRoute: (route: Route) => void; reviewCount: number }) {
-  return (
-    <aside className="sidebar">
-      <div className="brand">
-        <div className="brand-mark">L</div>
-        <div className="brand-name">Ledger</div>
-        <div className="brand-sub">Personal</div>
-      </div>
-      <nav className="nav" aria-label="Main navigation">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = route === item.id;
-          return (
-            <button key={item.id} className={`nav-item ${active ? "active" : ""}`} onClick={() => setRoute(item.id)}>
-              <Icon size={16} />
-              <span>{item.label}</span>
-              {item.id === "review" && reviewCount > 0 ? <span className="nav-badge">{reviewCount}</span> : null}
-            </button>
-          );
-        })}
-      </nav>
-      <div className="sidebar-foot">
-        <div className="ai-card">
-          <div className="ai-card-head">
-            <Sparkles size={14} />
-            <span>AI suggestions</span>
-          </div>
-          <div className="ai-card-body">{reviewCount} transactions have suggested labels awaiting review.</div>
-          <button className="ai-card-link" onClick={() => setRoute("review")}>Open review queue</button>
-        </div>
-        <div className="user-row">
-          <div className="avatar">J</div>
-          <div className="user-meta">
-            <div className="user-name">James</div>
-            <div className="user-sub">{ledgerData.accounts.length} accounts - synced 2m ago</div>
-          </div>
-          <Settings size={15} />
-        </div>
-      </div>
-    </aside>
-  );
+export function useLedger() {
+  const ctx = useContext(LedgerDataContext);
+
+  if (!ctx) {
+    throw new Error("useLedger must be used inside LedgerProvider.");
+  }
+
+  return ctx;
 }
 
-function TopBar({ route }: { route: Route }) {
-  const labels: Record<Route, [string, string]> = {
-    today: ["Today", BASE_DATE.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })],
-    transactions: ["Transactions", "All accounts"],
-    review: ["Review queue", "Items needing your attention"],
-    recurring: ["Recurring", "Subscriptions and fixed costs"],
-    accounts: ["Accounts", "Connected institutions"]
-  };
-  const [title, eyebrow] = labels[route];
+export function LedgerApp({ route }: { route: LedgerRoute }) {
+  const ctx = useLedger();
 
-  return (
-    <header className="topbar">
-      <div>
-        <div className="topbar-eyebrow">{eyebrow}</div>
-        <h1 className="topbar-title">{title}</h1>
-      </div>
-      <div className="topbar-actions">
-        <label className="search" aria-label="Search">
-          <Search size={14} />
-          <input placeholder="Search transactions, merchants, categories..." />
-          <kbd>Cmd K</kbd>
-        </label>
-      </div>
-    </header>
-  );
+  if (route === "dashboard") return <TodayView ctx={ctx} />;
+  if (route === "transactions") return <TransactionsView ctx={ctx} />;
+  if (route === "review") return <ReviewView ctx={ctx} />;
+  if (route === "recurring") return <RecurringView />;
+  if (route === "accounts") return <AccountsView />;
+  return <SettingsView ctx={ctx} />;
 }
 
 function TodayView({ ctx }: { ctx: LedgerContext }) {
@@ -1172,5 +1115,90 @@ function AccountsView() {
         );
       })}
     </div>
+  );
+}
+
+function SettingsView({ ctx }: { ctx: LedgerContext }) {
+  const connectedCount = ledgerData.accounts.length;
+  const recurringCount = ledgerData.recurring.filter((item) => item.status === "active").length;
+  const pendingReviewCount = ctx.reviewItems.length;
+  const spendingTxns = ctx.txns.filter((txn) => txn.amount < 0 && txn.intent !== "transfer").length;
+
+  return (
+    <div className="settings-view">
+      <section className="settings-panel">
+        <div className="settings-panel-head">
+          <div>
+            <div className="card-eyebrow">Workspace</div>
+            <div className="settings-title">Personal Ledger</div>
+          </div>
+          <span className="settings-pill">Mock data</span>
+        </div>
+        <div className="settings-grid">
+          <SettingMetric label="Connected accounts" value={String(connectedCount)} />
+          <SettingMetric label="Recurring items" value={String(recurringCount)} />
+          <SettingMetric label="Review queue" value={String(pendingReviewCount)} />
+          <SettingMetric label="Spend records" value={String(spendingTxns)} />
+        </div>
+      </section>
+
+      <section className="settings-panel">
+        <div className="settings-panel-head">
+          <div>
+            <div className="card-eyebrow">Review rules</div>
+            <div className="settings-title">Navigation guardrails</div>
+          </div>
+        </div>
+        <div className="settings-list">
+          <SettingToggle label="Flag peer-to-peer transfers" detail="Venmo, Zelle, and Cash App stay in review until explained." checked />
+          <SettingToggle label="Flag large charges" detail="Unusual transaction amounts are held out of trusted totals." checked />
+          <SettingToggle label="Detect new recurring charges" detail="Repeated merchants can be confirmed before joining the recurring list." checked />
+        </div>
+      </section>
+
+      <section className="settings-panel">
+        <div className="settings-panel-head">
+          <div>
+            <div className="card-eyebrow">Session</div>
+            <div className="settings-title">Access</div>
+          </div>
+        </div>
+        <div className="settings-row">
+          <div>
+            <div className="settings-row-title">Supabase Auth</div>
+            <div className="settings-row-sub">The app shell is protected by the existing proxy middleware.</div>
+          </div>
+          <form action="/login/logout" method="post">
+            <button className="btn" type="submit">
+              <LogOut size={14} /> Sign out
+            </button>
+          </form>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SettingMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="setting-metric">
+      <div className="stat-label">{label}</div>
+      <div className="setting-metric-value mono">{value}</div>
+    </div>
+  );
+}
+
+function SettingToggle({ label, detail, checked }: { label: string; detail: string; checked?: boolean }) {
+  return (
+    <label className="setting-toggle">
+      <span className="setting-toggle-copy">
+        <span className="settings-row-title">{label}</span>
+        <span className="settings-row-sub">{detail}</span>
+      </span>
+      <span className="switch" aria-hidden>
+        <input defaultChecked={checked} disabled type="checkbox" />
+        <span />
+      </span>
+    </label>
   );
 }

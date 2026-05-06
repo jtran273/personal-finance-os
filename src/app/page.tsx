@@ -1,5 +1,5 @@
-import { LedgerApp } from "@/components/ledger/ledger-app";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <LedgerApp />;
+  redirect("/dashboard");
 }

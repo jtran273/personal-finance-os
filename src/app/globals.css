@@ -1880,9 +1880,16 @@ kbd {
 
 .plaid-metrics {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 14px;
+}
+
+.plaid-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .setting-metric {
@@ -1895,6 +1902,11 @@ kbd {
 .setting-metric-value {
   font-size: 22px;
   font-weight: 500;
+}
+
+.setting-metric-value.sync-date {
+  font-size: 15px;
+  line-height: 1.25;
 }
 
 .settings-list {

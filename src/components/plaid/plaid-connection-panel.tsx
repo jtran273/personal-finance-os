@@ -10,8 +10,10 @@ interface PlaidConnectionSummary {
   consentExpiresAt: string | null;
   createdAt: string;
   errorCode: string | null;
+  errorMessage: string | null;
   id: string;
   institutionName: string;
+  lastSuccessfulSyncAt: string | null;
   plaidInstitutionId: string | null;
   status: "active" | "error" | "revoked";
   updatedAt: string;
@@ -28,12 +30,38 @@ interface LinkTokenResponse {
 
 interface ExchangeResponse {
   connection: PlaidConnectionSummary;
+  syncError: string | null;
 }
 
-type RequestState = "idle" | "loading" | "exchanging";
+interface SyncRunSummary {
+  accountsUpserted: number;
+  balanceSnapshotsUpserted: number;
+  failed: number;
+  rawTransactionsUpserted: number;
+  succeeded: number;
+  totalItems: number;
+}
+
+interface SyncResponse {
+  connections: PlaidConnectionSummary[];
+  sync: SyncRunSummary;
+}
+
+type RequestState = "idle" | "loading" | "exchanging" | "syncing";
 
 function formatConnectedDate(value: string) {
   return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatSyncDate(value: string | null) {
+  if (!value) return "Never";
+
+  return new Date(value).toLocaleString("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short"
+  });
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -60,6 +88,15 @@ export function PlaidConnectionPanel() {
     () => new Set(connections.map((connection) => connection.plaidInstitutionId ?? connection.institutionName)).size,
     [connections]
   );
+  const lastSyncAt = useMemo(() => {
+    const values = connections
+      .map((connection) => connection.lastSuccessfulSyncAt)
+      .filter((value): value is string => Boolean(value));
+
+    return values.length > 0
+      ? values.sort((a, b) => Date.parse(b) - Date.parse(a))[0]
+      : null;
+  }, [connections]);
 
   useEffect(() => {
     let ignore = false;
@@ -111,7 +148,8 @@ export function PlaidConnectionPanel() {
         data.connection,
         ...current.filter((connection) => connection.id !== data.connection.id)
       ]);
-      setSuccessMessage(`${data.connection.institutionName} connected.`);
+      setSuccessMessage(`${data.connection.institutionName} connected${data.syncError ? "." : " and synced."}`);
+      if (data.syncError) setError(data.syncError);
       setLinkToken(null);
     } catch (exchangeError) {
       setError(exchangeError instanceof Error ? exchangeError.message : "Unable to finish the Plaid connection.");
@@ -166,7 +204,38 @@ export function PlaidConnectionPanel() {
     }
   };
 
+  const syncConnections = async () => {
+    setRequestState("syncing");
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const data = await fetch("/api/plaid/sync", { method: "POST" }).then((response) =>
+        readJson<SyncResponse>(response)
+      );
+
+      setConnections(data.connections);
+      if (data.sync.failed > 0) {
+        setError(`Sync failed for ${data.sync.failed} Plaid item${data.sync.failed === 1 ? "" : "s"}.`);
+        setSuccessMessage(
+          data.sync.succeeded > 0
+            ? `Synced ${data.sync.succeeded} of ${data.sync.totalItems} Plaid items.`
+            : null
+        );
+      } else {
+        setSuccessMessage(
+          `Synced ${data.sync.rawTransactionsUpserted} transactions and ${data.sync.accountsUpserted} accounts.`
+        );
+      }
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : "Unable to sync Plaid data.");
+    } finally {
+      setRequestState("idle");
+    }
+  };
+
   const isBusy = requestState === "loading" || requestState === "exchanging" || openRequested;
+  const isSyncing = requestState === "syncing";
 
   return (
     <section className="settings-panel plaid-panel">
@@ -177,10 +246,21 @@ export function PlaidConnectionPanel() {
           </div>
           <div className="settings-title">Bank connections</div>
         </div>
-        <button className="btn btn-primary" disabled={isBusy} onClick={startPlaidLink} type="button">
-          {requestState === "exchanging" ? <RefreshCw size={14} /> : <Plus size={14} />}
-          {requestState === "exchanging" ? "Saving" : "Connect"}
-        </button>
+        <div className="plaid-actions">
+          <button
+            className="btn"
+            disabled={isBusy || isSyncing || connections.length === 0}
+            onClick={syncConnections}
+            type="button"
+          >
+            <RefreshCw size={14} />
+            {isSyncing ? "Syncing" : "Sync"}
+          </button>
+          <button className="btn btn-primary" disabled={isBusy || isSyncing} onClick={startPlaidLink} type="button">
+            {requestState === "exchanging" ? <RefreshCw size={14} /> : <Plus size={14} />}
+            {requestState === "exchanging" ? "Saving" : "Connect"}
+          </button>
+        </div>
       </div>
 
       <div className="plaid-metrics">
@@ -191,6 +271,10 @@ export function PlaidConnectionPanel() {
         <div className="setting-metric">
           <div className="setting-metric-value">{connectedInstitutionCount}</div>
           <div className="settings-row-sub">Institutions</div>
+        </div>
+        <div className="setting-metric">
+          <div className="setting-metric-value sync-date">{formatSyncDate(lastSyncAt)}</div>
+          <div className="settings-row-sub">Last sync</div>
         </div>
       </div>
 
@@ -223,7 +307,11 @@ export function PlaidConnectionPanel() {
               <div className="settings-row-title">{connection.institutionName}</div>
               <div className="settings-row-sub">
                 Connected {formatConnectedDate(connection.createdAt)}
-                {connection.errorCode ? ` - ${connection.errorCode}` : ""}
+                {" | "}
+                Last sync {formatSyncDate(connection.lastSuccessfulSyncAt)}
+                {connection.errorCode
+                  ? ` | ${connection.errorCode}${connection.errorMessage ? `: ${connection.errorMessage}` : ""}`
+                  : ""}
               </div>
             </div>
             <span className={`plaid-status ${connection.status}`}>{connection.status}</span>

@@ -1,5 +1,12 @@
 import { PlaidConfigurationError } from "./config";
 
+export class PlaidRouteConfigurationError extends Error {
+  constructor(message = "Plaid route is not configured.") {
+    super(message);
+    this.name = "PlaidRouteConfigurationError";
+  }
+}
+
 interface SafePlaidError {
   code: string;
   requestId?: string;
@@ -20,6 +27,10 @@ export function getSafePlaidError(error: unknown): SafePlaidError {
     return { code: "PLAID_CONFIGURATION_ERROR" };
   }
 
+  if (error instanceof PlaidRouteConfigurationError) {
+    return { code: "PLAID_ROUTE_CONFIGURATION_ERROR" };
+  }
+
   const response = isRecord(error) && isRecord(error.response) ? error.response : null;
   const data = response && isRecord(response.data) ? response.data : null;
 
@@ -36,7 +47,7 @@ export function logPlaidError(context: string, error: unknown) {
 }
 
 export function getPlaidErrorStatus(error: unknown) {
-  if (error instanceof PlaidConfigurationError) return 503;
+  if (error instanceof PlaidConfigurationError || error instanceof PlaidRouteConfigurationError) return 503;
 
   const safe = getSafePlaidError(error);
   if (safe.status === 401 || safe.status === 403) return 502;

@@ -1,5 +1,15 @@
-import { plaidRouteError, requirePlaidRouteUser } from "@/lib/plaid/route-helpers";
-import { exchangePlaidPublicToken, type PlaidInstitutionInput } from "@/lib/plaid/service";
+import {
+  createPlaidRouteWriteClient,
+  plaidRouteError,
+  requirePlaidRouteUser
+} from "@/lib/plaid/route-helpers";
+import {
+  exchangePlaidPublicToken,
+  listPlaidConnections,
+  syncPlaidItem,
+  type PlaidInstitutionInput
+} from "@/lib/plaid/service";
+import { logPlaidError } from "@/lib/plaid/errors";
 import { NextResponse, type NextRequest } from "next/server";
 
 export const runtime = "nodejs";
@@ -51,14 +61,32 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const writeClient = createPlaidRouteWriteClient();
     const connection = await exchangePlaidPublicToken({
-      client: context.supabase,
+      client: writeClient,
       institution: parsed.institution,
       publicToken: parsed.publicToken,
       userId: context.user.id
     });
+    let syncedConnection = connection;
+    let syncError: string | null = null;
 
-    return NextResponse.json({ connection });
+    try {
+      await syncPlaidItem({
+        client: writeClient,
+        itemId: connection.id,
+        userId: context.user.id
+      });
+      const connections = await listPlaidConnections(writeClient, context.user.id);
+      syncedConnection = connections.find((item) => item.id === connection.id) ?? connection;
+    } catch (error) {
+      logPlaidError("plaid_initial_sync_failed", error);
+      syncError = "Initial Plaid sync did not complete. You can retry from settings.";
+      const connections = await listPlaidConnections(writeClient, context.user.id);
+      syncedConnection = connections.find((item) => item.id === connection.id) ?? connection;
+    }
+
+    return NextResponse.json({ connection: syncedConnection, syncError });
   } catch (error) {
     return plaidRouteError(
       "plaid_public_token_exchange_failed",

@@ -1,0 +1,479 @@
+.shell {
+  display: flex;
+  width: min(100%, 1280px);
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.summaryCard strong {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.summaryCard > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.summaryLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.6fr) repeat(3, minmax(126px, 0.7fr)) repeat(5, minmax(142px, 1fr));
+  align-items: end;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.field > span {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.searchField {
+  grid-column: span 2;
+}
+
+.textControl,
+.inputControl,
+.selectControl {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 13px;
+  outline: none;
+}
+
+.textControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  color: var(--muted);
+}
+
+.textControl input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+
+.inputControl,
+.selectControl {
+  padding: 0 10px;
+}
+
+.selectControl {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 15px,
+    calc(100% - 9px) 15px;
+  background-repeat: no-repeat;
+  background-size:
+    5px 5px,
+    5px 5px;
+  padding-right: 28px;
+}
+
+.textControl:focus-within,
+.inputControl:focus,
+.selectControl:focus {
+  border-color: var(--ink);
+}
+
+.checkboxField {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.checkboxField input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--ink);
+}
+
+.filterActions {
+  display: flex;
+  gap: 8px;
+}
+
+.primaryButton,
+.secondaryButton {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 7px;
+  padding: 0 12px;
+  font-size: 13px;
+  font-weight: 450;
+  text-decoration: none;
+}
+
+.primaryButton {
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.secondaryButton {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.primaryButton:hover,
+.secondaryButton:hover {
+  border-color: var(--ink-2);
+}
+
+.notice,
+.errorNotice,
+.emptyState {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.errorNotice {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.tableShell {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.tableScroll {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  min-width: 1120px;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.table th:nth-child(1) {
+  width: 116px;
+}
+
+.table th:nth-child(2) {
+  width: 280px;
+}
+
+.table th:nth-child(3) {
+  width: 184px;
+}
+
+.table th:nth-child(4) {
+  width: 190px;
+}
+
+.table th:nth-child(5) {
+  width: 124px;
+}
+
+.table th:nth-child(6) {
+  width: 180px;
+}
+
+.amountHead {
+  width: 120px;
+}
+
+.table th.amountHead {
+  text-align: right;
+}
+
+.table td {
+  border-bottom: 1px solid var(--line-2);
+  padding: 13px 14px;
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.table tbody tr:hover td {
+  background: var(--accent-soft);
+}
+
+.pendingRow td {
+  background: color-mix(in oklab, var(--info) 5%, var(--surface));
+}
+
+.reviewRow td {
+  background: color-mix(in oklab, var(--warn) 5%, var(--surface));
+}
+
+.pendingRow.reviewRow td {
+  background: color-mix(in oklab, var(--warn) 5%, color-mix(in oklab, var(--info) 5%, var(--surface)));
+}
+
+.dateCell,
+.categoryCell,
+.accountCell,
+.merchantCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.dateCell span:first-child,
+.merchantName,
+.categoryCell span:first-child,
+.accountCell span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dateCell span:first-child,
+.merchantName {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.dateCell span:last-child,
+.categoryCell span:last-child,
+.accountCell span:last-child,
+.secondaryLine,
+.noteLine,
+.mutedText {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merchantName {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 6px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.pendingBadge {
+  border-color: color-mix(in oklab, var(--info) 28%, var(--line));
+  background: color-mix(in oklab, var(--info) 10%, var(--surface));
+  color: var(--info);
+}
+
+.reviewBadge {
+  border-color: color-mix(in oklab, var(--warn) 30%, var(--line));
+  background: color-mix(in oklab, var(--warn) 12%, var(--surface));
+  color: var(--warn);
+}
+
+.noteLine {
+  font-style: italic;
+}
+
+.intentChip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.intent-personal,
+.intent-transfer {
+  background: var(--surface-2);
+  color: var(--ink-2);
+}
+
+.intent-business {
+  border-color: color-mix(in oklab, var(--info) 24%, var(--line));
+  background: color-mix(in oklab, var(--info) 9%, var(--surface));
+  color: var(--info);
+}
+
+.intent-shared {
+  border-color: color-mix(in oklab, var(--warn) 26%, var(--line));
+  background: color-mix(in oklab, var(--warn) 10%, var(--surface));
+  color: var(--warn);
+}
+
+.intent-reimbursable {
+  border-color: color-mix(in oklab, var(--pos) 24%, var(--line));
+  background: color-mix(in oklab, var(--pos) 9%, var(--surface));
+  color: var(--pos);
+}
+
+.reviewText {
+  color: var(--warn);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.amountCell {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  text-align: right;
+}
+
+.positiveAmount {
+  color: var(--pos);
+}
+
+.negativeAmount {
+  color: var(--ink);
+}
+
+.limitNotice {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.emptyState {
+  padding: 48px;
+  text-align: center;
+}
+
+.emptyTitle {
+  margin-bottom: 4px;
+  color: var(--ink);
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 24px;
+}
+
+.emptyCopy {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 1180px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .summaryGrid,
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .searchField {
+    grid-column: auto;
+  }
+
+  .filterActions {
+    flex-wrap: wrap;
+  }
+
+  .primaryButton,
+  .secondaryButton {
+    flex: 1;
+  }
+}

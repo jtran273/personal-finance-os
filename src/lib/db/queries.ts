@@ -85,6 +85,7 @@ export interface TransactionListFilters {
   toDate?: string;
   recurring?: boolean;
   reviewStatus?: ReviewStatus | "all";
+  excludeTransfers?: boolean;
   search?: string;
   limit?: number;
   offset?: number;
@@ -384,19 +385,29 @@ export async function listTransactions(
   }
 
   const enrichedRows = expectData(await query, "List enriched transactions");
+  const hydrated = await hydrateTransactions(client, userId, enrichedRows);
   const search = filters.search?.trim().toLowerCase();
-  const searchedRows = search
-    ? enrichedRows.filter((row) =>
-      `${row.merchant_name} ${row.category_name} ${row.note}`.toLowerCase().includes(search)
-    )
-    : enrichedRows;
-
-  const hydrated = await hydrateTransactions(client, userId, searchedRows);
-  const reviewFiltered = filters.reviewStatus && filters.reviewStatus !== "all"
+  const searched = search
     ? hydrated.filter((transaction) =>
-      transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
+      [
+        transaction.merchant,
+        transaction.plaidMerchant,
+        transaction.category,
+        transaction.plaidCategory,
+        transaction.accountName,
+        transaction.institutionName,
+        transaction.note
+      ].filter(Boolean).join(" ").toLowerCase().includes(search)
     )
     : hydrated;
+  const transferFiltered = filters.excludeTransfers
+    ? searched.filter((transaction) => transaction.intent !== "transfer")
+    : searched;
+  const reviewFiltered = filters.reviewStatus && filters.reviewStatus !== "all"
+    ? transferFiltered.filter((transaction) =>
+      transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
+    )
+    : transferFiltered;
 
   return slicePage(reviewFiltered, filters.limit, filters.offset);
 }

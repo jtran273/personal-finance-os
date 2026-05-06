@@ -1,0 +1,335 @@
+.shell {
+  display: flex;
+  width: min(100%, 1280px);
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notice,
+.errorNotice,
+.emptyState {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.errorNotice {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.emptyState {
+  display: flex;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.emptyState strong {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.emptyState span {
+  display: block;
+  margin-top: 4px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard,
+.group,
+.accountCard {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.summaryCard {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.summaryLabel,
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.summaryCard strong {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.summaryCard > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.positive {
+  color: var(--pos);
+}
+
+.negative {
+  color: var(--neg);
+}
+
+.groupStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.group {
+  padding: 20px;
+}
+
+.groupHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.groupHead h2 {
+  margin: 5px 0 4px;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 25px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.groupHead p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.groupTotal {
+  flex: 0 0 auto;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.accountGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: 12px;
+}
+
+.accountCard {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.inactiveCard {
+  opacity: 0.68;
+}
+
+.accountHead,
+.accountName,
+.accountFoot,
+.utilization,
+.detailGrid {
+  min-width: 0;
+}
+
+.accountHead,
+.accountFoot,
+.utilization {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.institution {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.institution {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.swatch {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+}
+
+.syncPill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.sync-fresh {
+  border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
+  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+  color: var(--pos);
+}
+
+.sync-stale,
+.sync-never {
+  border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+  color: var(--warn);
+}
+
+.accountName {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.accountName strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.accountName span {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.balance {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 31px;
+  line-height: 1;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.detailGrid div {
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 9px;
+  background: var(--surface-2);
+}
+
+.detailGrid span,
+.accountFoot,
+.utilization strong {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.detailGrid strong {
+  display: block;
+  margin-top: 3px;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.utilization {
+  color: var(--muted);
+}
+
+.utilization div {
+  height: 5px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line-2);
+}
+
+.utilization span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--neg);
+}
+
+.accountFoot {
+  border-top: 1px solid var(--line-2);
+  padding-top: 11px;
+}
+
+.accountFoot span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.emptyMini {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .summaryGrid,
+  .accountGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .group,
+  .accountCard {
+    padding: 16px;
+  }
+
+  .groupHead {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .groupTotal {
+    font-size: 16px;
+  }
+}

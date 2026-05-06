@@ -1,0 +1,398 @@
+.shell {
+  display: flex;
+  width: min(100%, 1280px);
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notice,
+.errorNotice,
+.emptyState {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.errorNotice {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.emptyState {
+  display: flex;
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.emptyState strong {
+  display: block;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.emptyState span {
+  display: block;
+  margin-top: 4px;
+}
+
+.hero {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 24px;
+  background: var(--surface);
+}
+
+.heroTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.hero h2,
+.card h2 {
+  margin: 0;
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.hero h2 {
+  margin-top: 8px;
+  font-size: 56px;
+}
+
+.card h2 {
+  margin-top: 5px;
+  font-size: 24px;
+}
+
+.syncPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.syncPill span:last-child {
+  color: var(--muted);
+}
+
+.sync-fresh {
+  border-color: color-mix(in oklab, var(--pos) 20%, var(--line));
+  background: color-mix(in oklab, var(--pos) 7%, var(--surface));
+}
+
+.sync-stale,
+.sync-never {
+  border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
+  background: color-mix(in oklab, var(--warn) 8%, var(--surface));
+}
+
+.sync-empty {
+  background: var(--surface-2);
+}
+
+.heroDelta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--accent);
+  font-size: 13px;
+}
+
+.trend {
+  margin-top: 18px;
+}
+
+.trend svg {
+  display: block;
+  width: 100%;
+  height: 136px;
+}
+
+.trendAxis,
+.trendSource {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.trendSource {
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.emptyTrend {
+  display: grid;
+  min-height: 136px;
+  place-items: center;
+  color: var(--muted);
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryCard,
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.summaryCard {
+  display: flex;
+  min-height: 112px;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.summaryLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.summaryCard strong {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 30px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.summaryCard > span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.negative,
+.negativeAmount {
+  color: var(--neg);
+}
+
+.positive,
+.positiveAmount {
+  color: var(--pos);
+}
+
+.card {
+  padding: 20px;
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.textLink {
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.textLink:hover {
+  color: var(--ink);
+}
+
+.groupGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.groupCard {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-2);
+}
+
+.groupTop,
+.groupMeta,
+.transactionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.groupTop span,
+.transactionRow strong,
+.reviewRow strong,
+.insight strong {
+  font-weight: 500;
+}
+
+.groupTop strong,
+.compactValue,
+.amount {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.groupCard p {
+  min-height: 38px;
+  margin: 8px 0 14px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.groupMeta {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.itemList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transactionRow,
+.reviewRow,
+.insight {
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+}
+
+.transactionRow div,
+.reviewRow div,
+.insight {
+  min-width: 0;
+}
+
+.transactionRow span,
+.reviewRow span,
+.insight span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.amount {
+  flex: 0 0 auto;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.reviewRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reviewIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border-radius: 7px;
+  background: color-mix(in oklab, var(--warn) 10%, var(--surface));
+  color: var(--warn);
+}
+
+.insight {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tone-warn {
+  border-color: color-mix(in oklab, var(--warn) 20%, var(--line));
+}
+
+.tone-ok {
+  border-color: color-mix(in oklab, var(--pos) 18%, var(--line));
+}
+
+.tone-info {
+  border-color: color-mix(in oklab, var(--info) 18%, var(--line));
+}
+
+.emptyMini {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+@media (max-width: 1100px) {
+  .summaryGrid,
+  .groupGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .hero {
+    padding: 20px 18px;
+  }
+
+  .heroTop,
+  .cardHead {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero h2 {
+    font-size: 40px;
+  }
+
+  .summaryGrid,
+  .groupGrid,
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .trend svg {
+    height: 110px;
+  }
+}

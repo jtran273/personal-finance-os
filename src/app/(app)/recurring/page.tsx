@@ -1,11 +1,14 @@
 import { RecurringView } from "@/components/finance/recurring/recurring-view";
 import {
+  listAccounts,
   listRecurringExpenses,
   listTransactions,
+  type AccountRecord,
   type RecurringExpenseRecord,
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import { buildUpcomingCashflowTimeline } from "@/lib/finance/cashflow";
 import { detectRecurringCandidates, normalizeRecurringMerchant, type RecurringCandidate } from "@/lib/recurring";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +22,7 @@ function recurringKey(merchant: string, cadence: string) {
 }
 
 export default async function RecurringPage() {
+  const asOfDate = new Date().toISOString().slice(0, 10);
   let candidates: RecurringCandidate[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
@@ -26,6 +30,7 @@ export default async function RecurringPage() {
   let allRecurringExpenses: RecurringExpenseRecord[] = [];
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let transactions: TransactionRecord[] = [];
+  let accounts: AccountRecord[] = [];
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
@@ -34,7 +39,8 @@ export default async function RecurringPage() {
 
   if (context.client && context.userId) {
     try {
-      [allRecurringExpenses, transactions] = await Promise.all([
+      [accounts, allRecurringExpenses, transactions] = await Promise.all([
+        listAccounts(context.client, context.userId),
         listRecurringExpenses(context.client, context.userId, ["active", "pending", "paused", "dismissed"]),
         listTransactions(context.client, context.userId, { limit: 5000 })
       ]);
@@ -45,7 +51,7 @@ export default async function RecurringPage() {
           .map((expense) => recurringKey(expense.merchant, expense.cadence))
       );
       candidates = detectRecurringCandidates(transactions, {
-        asOfDate: new Date().toISOString().slice(0, 10),
+        asOfDate,
         existingRecurring: allRecurringExpenses
       }).filter((candidate) => !dismissedRecurringKeys.has(recurringKey(candidate.merchant, candidate.cadence)));
     } catch (loadError) {
@@ -60,6 +66,12 @@ export default async function RecurringPage() {
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
       recurringExpenses={recurringExpenses}
+      upcomingCashflow={buildUpcomingCashflowTimeline({
+        accounts,
+        asOfDate,
+        recurringExpenses,
+        transactions
+      })}
     />
   );
 }

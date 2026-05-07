@@ -142,6 +142,8 @@ Accepted AI cleanups can propose reusable merchant rules for future imports. Bef
 
 `src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Confirmed rows become part of dashboard and settings summaries.
 
+`src/lib/finance/cashflow.ts` also builds the upcoming cashflow calendar as a pure calculation. Confirmed and pending recurring rows produce scheduled bill events, while recurring posted positive transactions produce projected income events when their history has a deterministic cadence. The dashboard and `/recurring` display only app-owned merchant, amount, date, cadence, and account-derived cash totals; Plaid provider ids and raw payloads are not part of the timeline model.
+
 ## Budget Guardrails
 
 `src/lib/finance/budget-guardrails.ts` derives deterministic category guardrails from existing enriched transaction history. The dashboard compares current-month owned spending against the average of recent full months, projects the current pace through month end, and highlights categories that are near or over that baseline. The calculation reuses the spending helpers that exclude transfers and reimbursable split amounts, keeps unresolved review impact separate, and renders only app-facing category labels and transaction-filter links.

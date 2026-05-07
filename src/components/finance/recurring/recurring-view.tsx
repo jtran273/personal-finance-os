@@ -1,4 +1,5 @@
 import type { RecurringExpenseRecord } from "@/lib/db";
+import type { UpcomingCashflowTimelineSummary } from "@/lib/finance/cashflow";
 import type { RecurringCandidate } from "@/lib/recurring";
 import {
   BadgeAlert,
@@ -19,6 +20,7 @@ interface RecurringViewProps {
   isConfigured: boolean;
   isSignedIn: boolean;
   recurringExpenses: RecurringExpenseRecord[];
+  upcomingCashflow: UpcomingCashflowTimelineSummary;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -92,6 +94,11 @@ function candidateReason(candidate: RecurringCandidate) {
 function statusLabel(status: RecurringExpenseRecord["status"]) {
   if (status === "pending") return "Needs review";
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function formatSignedMoney(value: number) {
+  if (value === 0) return formatMoney(0);
+  return `${value > 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
 }
 
 function SummaryCard({
@@ -244,12 +251,62 @@ function CandidateTable({ candidates }: { candidates: RecurringCandidate[] }) {
   );
 }
 
+function UpcomingCashflowPanel({ summary }: { summary: UpcomingCashflowTimelineSummary }) {
+  return (
+    <section className={styles.panel}>
+      <div className={styles.panelHead}>
+        <div>
+          <div className={styles.eyebrow}>Readiness</div>
+          <h2>Next 30 days</h2>
+        </div>
+        <span>{formatSignedMoney(summary.netTotal)}</span>
+      </div>
+      <div className={styles.timelineSummary}>
+        <div>
+          <span>Scheduled income</span>
+          <strong className={styles.positiveText}>{formatMoney(summary.incomeTotal)}</strong>
+        </div>
+        <div>
+          <span>Scheduled bills</span>
+          <strong className={styles.negativeText}>{formatMoney(summary.billTotal)}</strong>
+        </div>
+        <div>
+          <span>Cash after schedule</span>
+          <strong>{summary.projectedCashBalance === null ? "No cash accounts" : formatMoney(summary.projectedCashBalance)}</strong>
+        </div>
+      </div>
+      {summary.events.length === 0 ? (
+        <div className={styles.emptyMini}>No recurring income or bills are scheduled in this window.</div>
+      ) : (
+        <div className={styles.timelineList}>
+          {summary.events.slice(0, 8).map((event) => (
+            <div className={styles.timelineRow} key={event.id}>
+              <div>
+                <strong>{event.merchant}</strong>
+                <span>
+                  {formatDate(event.date)} - {event.cadence}
+                  {event.source === "transaction-history" ? " - projected from history" : ""}
+                  {event.status === "pending" ? " - pending" : ""}
+                </span>
+              </div>
+              <span className={event.direction === "income" ? styles.positiveText : styles.negativeText}>
+                {formatSignedMoney(event.direction === "income" ? event.amount : -event.amount)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function RecurringView({
   candidates,
   dataError,
   isConfigured,
   isSignedIn,
-  recurringExpenses
+  recurringExpenses,
+  upcomingCashflow
 }: RecurringViewProps) {
   const canShowData = isConfigured && isSignedIn && !dataError;
   const candidateByRecurringId = new Map(
@@ -349,6 +406,7 @@ export function RecurringView({
               Detected candidates estimate {formatMoney(candidateMonthlyTotal)} per month from real Plaid rows before review.
             </div>
           ) : null}
+          <UpcomingCashflowPanel summary={upcomingCashflow} />
           <TrackedTable candidateByRecurringId={candidateByRecurringId} recurringExpenses={visibleRecurringExpenses} />
           <CandidateTable candidates={additionalCandidates} />
         </>

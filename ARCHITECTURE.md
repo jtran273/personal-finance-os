@@ -40,7 +40,7 @@ Plaid API
 | Route | Purpose | Data source |
 | --- | --- | --- |
 | `/login` | Supabase Auth sign-in and optional local demo entry | Supabase Auth server client |
-| `/dashboard` | Today dashboard, net worth, insights, review nudges | Accounts, snapshots, transactions, review items, recurring rows, insights |
+| `/dashboard` | Today dashboard, net worth, budget guardrails, insights, review nudges | Accounts, snapshots, transactions, review items, recurring rows, insights |
 | `/transactions` | Searchable/filterable transaction table | Accounts, categories, enriched transactions |
 | `/transactions/[transactionId]` | Transaction edit surface | One enriched transaction plus categories |
 | `/agent-inbox` | Sanitized proposal inbox for finance-agent recommendations | Open review items and normalized review suggestions |
@@ -141,6 +141,10 @@ Accepted AI cleanups can propose reusable merchant rules for future imports. Bef
 ## Recurring Flow
 
 `src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Confirmed rows become part of dashboard and settings summaries.
+
+## Budget Guardrails
+
+`src/lib/finance/budget-guardrails.ts` derives deterministic category guardrails from existing enriched transaction history. The dashboard compares current-month owned spending against the average of recent full months, projects the current pace through month end, and highlights categories that are near or over that baseline. The calculation reuses the spending helpers that exclude transfers and reimbursable split amounts, keeps unresolved review impact separate, and renders only app-facing category labels and transaction-filter links.
 
 ## AI Suggestion Flow
 

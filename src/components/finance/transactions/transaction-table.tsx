@@ -73,6 +73,19 @@ function formatUnsignedMoney(value: number) {
   return moneyFormatter.format(Math.abs(value));
 }
 
+
+function confidenceLabel(confidence: number) {
+  return `${Math.round(confidence * 100)}% confidence`;
+}
+
+function categoryQuality(transaction: TransactionRecord) {
+  const issues: string[] = [];
+  if (transaction.confidence < 0.75) issues.push("Low confidence");
+  if (!transaction.categoryId || transaction.category.toLowerCase() === "uncategorized") issues.push("Uncategorized");
+  if (transaction.reviewItems.some((review) => review.status === "open")) issues.push("Open review");
+  return issues;
+}
+
 function reviewLabel(transaction: TransactionRecord) {
   const review = transaction.reviewItems.find((item) => item.status === "open") ?? transaction.reviewItems[0];
   if (!review) return "None";
@@ -156,6 +169,7 @@ export function TransactionTable({
           <tbody>
             {transactions.map((transaction) => {
               const hasOpenReview = transaction.reviewItems.some((review) => review.status === "open");
+              const qualityIssues = categoryQuality(transaction);
               const reimbursement = summarizeTransactionReimbursement(transaction);
               const rawLine = rawPlaidLine(transaction);
 
@@ -215,6 +229,16 @@ export function TransactionTable({
                   <td>
                     <div className={styles.categoryCell}>
                       <span>{transaction.category}</span>
+                      <span className={transaction.confidence < 0.75 ? styles.lowConfidenceText : styles.confidenceText}>
+                        {confidenceLabel(transaction.confidence)}
+                      </span>
+                      {qualityIssues.length > 0 ? (
+                        <div className={styles.qualityBadges}>
+                          {qualityIssues.map((issue) => (
+                            <span className={styles.qualityBadge} key={issue}>{issue}</span>
+                          ))}
+                        </div>
+                      ) : null}
                       {transaction.plaidCategory && transaction.plaidCategory !== transaction.category ? (
                         <span>{transaction.plaidCategory}</span>
                       ) : null}

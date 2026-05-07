@@ -485,6 +485,134 @@
   font-weight: 600;
 }
 
+.cleanupHero {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid color-mix(in oklab, var(--accent) 18%, var(--line));
+  border-radius: 8px;
+  padding: 12px;
+  background: color-mix(in oklab, var(--accent) 6%, var(--surface));
+}
+
+.cleanupHero svg {
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.cleanupHero strong,
+.cleanupHero span {
+  display: block;
+  min-width: 0;
+}
+
+.cleanupHero strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cleanupHero span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.cleanupStats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cleanupStats div {
+  min-width: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--surface-2);
+}
+
+.cleanupStats span,
+.cleanupStats strong {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cleanupStats span {
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+}
+
+.cleanupStats strong {
+  margin-top: 4px;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.cleanupRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cleanupRow {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 11px;
+  background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.cleanupRow:hover {
+  border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+}
+
+.cleanupRow div {
+  min-width: 0;
+}
+
+.cleanupRow strong,
+.cleanupRow span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cleanupRow div strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cleanupRow span {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.cleanupRow > strong {
+  flex: 0 0 auto;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 .spendRows {
   display: flex;
   flex-direction: column;
@@ -972,14 +1100,20 @@
 @media (max-width: 480px) {
   .transactionRow,
   .spendRow,
+  .cleanupRow,
   .guardrailTop,
   .guardrailMeta {
     align-items: flex-start;
     flex-direction: column;
   }
 
+  .cleanupStats {
+    grid-template-columns: 1fr;
+  }
+
   .amount,
-  .spendRow div:last-child {
+  .spendRow div:last-child,
+  .cleanupRow > strong {
     align-self: flex-start;
     text-align: left;
   }

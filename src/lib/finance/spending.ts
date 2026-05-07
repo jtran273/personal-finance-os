@@ -18,6 +18,20 @@ export interface SpendingGroupSummary {
   transactionIds: string[];
 }
 
+export type CategoryCleanupReason = "low-confidence" | "open-review" | "uncategorized";
+
+export interface CategoryCleanupAction {
+  id: string | null;
+  label: string;
+  amount: number;
+  count: number;
+  lowConfidenceCount: number;
+  openReviewCount: number;
+  reasons: CategoryCleanupReason[];
+  transactionIds: string[];
+  uncategorizedCount: number;
+}
+
 export interface SpendingWindowSummary {
   fromDate: string;
   toDate: string;
@@ -44,8 +58,14 @@ export interface UnusualSpendSummary {
 }
 
 export interface SpendingConfidenceSummary {
+  categoryCoveragePercent: number;
+  cleanupCandidateAmount: number;
+  cleanupCandidateCount: number;
   lowConfidenceCount: number;
   openReviewCount: number;
+  spendingTransactionCount: number;
+  topCleanupActions: CategoryCleanupAction[];
+  trustedSpendingTransactionCount: number;
   uncategorizedCount: number;
 }
 
@@ -214,19 +234,87 @@ function summarizeWindow(
 }
 
 function summarizeConfidence(transactions: readonly TransactionRecord[]): SpendingConfidenceSummary {
-  return transactions.reduce(
-    (summary, transaction) => {
-      if (transaction.confidence < 0.75) summary.lowConfidenceCount += 1;
-      if (transaction.reviewStatus === "open" || transaction.reviewItems.some((item) => item.status === "open")) {
-        summary.openReviewCount += 1;
-      }
-      if (!transaction.categoryId || transaction.category.toLowerCase() === "uncategorized") {
-        summary.uncategorizedCount += 1;
-      }
-      return summary;
-    },
-    { lowConfidenceCount: 0, openReviewCount: 0, uncategorizedCount: 0 }
-  );
+  const cleanupGroups = new Map<string, CategoryCleanupAction>();
+  let cleanupCandidateAmount = 0;
+  let cleanupCandidateCount = 0;
+  let lowConfidenceCount = 0;
+  let openReviewCount = 0;
+  let spendingTransactionCount = 0;
+  let trustedSpendingTransactionCount = 0;
+  let uncategorizedCount = 0;
+
+  transactions.forEach((transaction) => {
+    const spendingAmount = transactionSpendingAmount(transaction);
+    if (spendingAmount <= 0) return;
+
+    spendingTransactionCount += 1;
+
+    const lowConfidence = transaction.confidence < 0.75;
+    const openReview = hasOpenReview(transaction);
+    const uncategorized = !transaction.categoryId || transaction.category.toLowerCase() === "uncategorized";
+    const reasons: CategoryCleanupReason[] = [];
+
+    if (lowConfidence) {
+      lowConfidenceCount += 1;
+      reasons.push("low-confidence");
+    }
+    if (openReview) {
+      openReviewCount += 1;
+      reasons.push("open-review");
+    }
+    if (uncategorized) {
+      uncategorizedCount += 1;
+      reasons.push("uncategorized");
+    }
+
+    if (reasons.length === 0) {
+      trustedSpendingTransactionCount += 1;
+      return;
+    }
+
+    cleanupCandidateAmount = roundMoney(cleanupCandidateAmount + spendingAmount);
+    cleanupCandidateCount += 1;
+
+    const key = transaction.categoryId ?? transaction.category;
+    const group = cleanupGroups.get(key) ?? {
+      amount: 0,
+      count: 0,
+      id: transaction.categoryId,
+      label: transaction.category,
+      lowConfidenceCount: 0,
+      openReviewCount: 0,
+      reasons: [],
+      transactionIds: [],
+      uncategorizedCount: 0
+    };
+
+    group.amount = roundMoney(group.amount + spendingAmount);
+    group.count += 1;
+    group.lowConfidenceCount += lowConfidence ? 1 : 0;
+    group.openReviewCount += openReview ? 1 : 0;
+    group.uncategorizedCount += uncategorized ? 1 : 0;
+    group.transactionIds.push(transaction.id);
+    group.reasons = [...new Set([...group.reasons, ...reasons])];
+    cleanupGroups.set(key, group);
+  });
+
+  const categoryCoveragePercent = spendingTransactionCount === 0
+    ? 100
+    : Math.round((trustedSpendingTransactionCount / spendingTransactionCount) * 1000) / 10;
+
+  return {
+    categoryCoveragePercent,
+    cleanupCandidateAmount,
+    cleanupCandidateCount,
+    lowConfidenceCount,
+    openReviewCount,
+    spendingTransactionCount,
+    topCleanupActions: [...cleanupGroups.values()]
+      .sort((left, right) => right.amount - left.amount || right.count - left.count || left.label.localeCompare(right.label))
+      .slice(0, 4),
+    trustedSpendingTransactionCount,
+    uncategorizedCount
+  };
 }
 
 function findUnusualSpend(

@@ -7,7 +7,7 @@ import type {
   TransactionRecord
 } from "@/lib/db";
 import type { AccountGroup, AccountBalanceTotals, BalanceTrendPoint, SyncSummary } from "@/lib/finance/balances";
-import type { SpendingGroupSummary, SpendingInsightSummary } from "@/lib/finance/spending";
+import type { CategoryCleanupAction, SpendingGroupSummary, SpendingInsightSummary } from "@/lib/finance/spending";
 import type { DashboardInsightCard } from "@/lib/insights";
 import {
   Clock3,
@@ -530,6 +530,84 @@ function SpendingTrendRows({
   );
 }
 
+function cleanupReasonLabel(reason: CategoryCleanupAction["reasons"][number]) {
+  if (reason === "open-review") return "Open review";
+  if (reason === "low-confidence") return "Low confidence";
+  return "Uncategorized";
+}
+
+function CategoryCleanupPanel({ summary }: { summary: SpendingInsightSummary }) {
+  const confidence = summary.confidence;
+  const current = summary.currentMonth;
+  const hasCleanup = confidence.cleanupCandidateCount > 0;
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.eyebrow}>AI category cleanup</div>
+          <h2>{confidence.categoryCoveragePercent.toFixed(1)}% trusted</h2>
+        </div>
+        <Link className={styles.textLink} href="/review">Run cleanup</Link>
+      </div>
+
+      <div className={styles.cleanupHero}>
+        <Sparkles size={16} aria-hidden />
+        <div>
+          <strong>{hasCleanup ? `${confidence.cleanupCandidateCount.toLocaleString("en-US")} transactions need cleanup` : "Category coverage is clean"}</strong>
+          <span>
+            {hasCleanup
+              ? `${formatMoney(confidence.cleanupCandidateAmount)} of this month's spending still depends on AI review, merchant rules, or manual confirmation.`
+              : "This month's spending rows are categorized with enough confidence for the dashboard."}
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.cleanupStats}>
+        <div>
+          <span>Open review</span>
+          <strong>{confidence.openReviewCount.toLocaleString("en-US")}</strong>
+        </div>
+        <div>
+          <span>Low confidence</span>
+          <strong>{confidence.lowConfidenceCount.toLocaleString("en-US")}</strong>
+        </div>
+        <div>
+          <span>Uncategorized</span>
+          <strong>{confidence.uncategorizedCount.toLocaleString("en-US")}</strong>
+        </div>
+      </div>
+
+      {confidence.topCleanupActions.length === 0 ? (
+        <div className={styles.emptyMini}>No category cleanup actions for {formatDate(current.fromDate)} - {formatDate(current.toDate)}.</div>
+      ) : (
+        <div className={styles.cleanupRows}>
+          {confidence.topCleanupActions.map((item) => (
+            <Link
+              className={styles.cleanupRow}
+              href={transactionsHref({
+                category: item.id ?? undefined,
+                exclude_transfers: true,
+                from: current.fromDate,
+                q: item.id ? undefined : item.label,
+                review: item.openReviewCount > 0 ? "open" : undefined,
+                to: current.toDate
+              })}
+              key={item.id ?? item.label}
+            >
+              <div>
+                <strong>{item.label}</strong>
+                <span>{item.count.toLocaleString("en-US")} rows - {item.reasons.map(cleanupReasonLabel).join(", ")}</span>
+              </div>
+              <strong>{formatMoney(item.amount)}</strong>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function SpendingPanel({ summary }: { summary: SpendingInsightSummary }) {
   const current = summary.currentMonth;
   const unresolved = current.unresolvedReviewSpending;
@@ -979,6 +1057,7 @@ export function DashboardView({
           <SpendingPanel summary={spendingSummary} />
 
           <div className={styles.contentGrid}>
+            <CategoryCleanupPanel summary={spendingSummary} />
             <BudgetGuardrailsPanel summary={budgetGuardrails} />
             <CashflowRunwayPanel summary={cashflowRunway} />
             <RecentTransactions transactions={recentTransactions} />

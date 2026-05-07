@@ -1,11 +1,13 @@
 import { SettingsView } from "@/components/finance/settings/settings-view";
 import {
   listAccounts,
+  listMerchantRules,
   listRecurringExpenses,
   listReviewItems,
   listTransactions,
   type AccountRecord,
   type RecurringExpenseRecord,
+  type MerchantRuleRow,
   type ReviewQueueItem,
   type TransactionRecord
 } from "@/lib/db";
@@ -28,6 +30,7 @@ export default async function SettingsPage() {
   let isDemo = false;
   let plaidConnections: PlaidConnectionSummary[] = [];
   let latestPlaidSyncRun: PlaidPersistedSyncRunSummary | null = null;
+  let merchantRules: MerchantRuleRow[] = [];
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
   let transactions: TransactionRecord[] = [];
@@ -40,7 +43,7 @@ export default async function SettingsPage() {
 
   if (context.client && context.userId) {
     try {
-      [accounts, recurringExpenses, reviewItems, transactions, plaidConnections, latestPlaidSyncRun] = await Promise.all([
+      [accounts, recurringExpenses, reviewItems, transactions, plaidConnections, latestPlaidSyncRun, merchantRules] = await Promise.all([
         listAccounts(context.client, context.userId),
         listRecurringExpenses(context.client, context.userId),
         listReviewItems(context.client, context.userId, "open"),
@@ -50,7 +53,8 @@ export default async function SettingsPage() {
           : listPlaidConnections(context.client as unknown as Parameters<typeof listPlaidConnections>[0], context.userId),
         context.isDemo
           ? Promise.resolve(null)
-          : getLatestPlaidSyncRun(context.client as unknown as Parameters<typeof getLatestPlaidSyncRun>[0], context.userId)
+          : getLatestPlaidSyncRun(context.client as unknown as Parameters<typeof getLatestPlaidSyncRun>[0], context.userId),
+        listMerchantRules(context.client, context.userId)
       ]);
     } catch (loadError) {
       dataError = errorMessage(loadError);
@@ -66,6 +70,7 @@ export default async function SettingsPage() {
       isDemo={isDemo}
       isSignedIn={isSignedIn}
       latestPlaidSyncRun={latestPlaidSyncRun}
+      merchantRules={merchantRules}
       plaidConnections={plaidConnections}
       recurringExpenses={recurringExpenses}
       reviewItems={reviewItems}

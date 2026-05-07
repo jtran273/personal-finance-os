@@ -20,6 +20,7 @@ import {
   groupAccounts,
   summarizeSync
 } from "@/lib/finance/balances";
+import { buildSpendingInsightSummary } from "@/lib/finance/spending";
 import { buildDashboardInsightCards } from "@/lib/insights";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +80,9 @@ export default async function DashboardPage() {
     maxPoints: 366,
     transactions: trendTransactions
   });
+  const spendingSummary = buildSpendingInsightSummary(trendTransactions, {
+    asOfDate: now.toISOString().slice(0, 10)
+  });
   const insightCards = buildDashboardInsightCards({
     accounts,
     persistedInsights: insights,
@@ -102,6 +106,7 @@ export default async function DashboardPage() {
       recurringExpenses={recurringExpenses}
       reviewItems={reviewItems}
       snapshotCount={snapshots.length}
+      spendingSummary={spendingSummary}
       syncSummary={summarizeSync(accounts)}
       totals={totals}
       trend={trend}

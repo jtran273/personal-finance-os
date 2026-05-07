@@ -5,6 +5,7 @@ import {
   getRemovedPlaidTransactionIdsToDelete,
   mergePlaidAccountSourcesForSync,
   planPendingRawTransactionReplacements,
+  shouldRefreshImportedEnrichment,
   shouldRefreshPlaidEnrichment
 } from "./service";
 
@@ -73,7 +74,7 @@ test("pending raw transaction is planned for in-place posted replacement", () =>
   );
 });
 
-test("manual or reviewed enrichment is not refreshed by Plaid modifications", () => {
+test("manual or reviewed Plaid enrichment is not refreshed by Plaid modifications", () => {
   assert.equal(shouldRefreshPlaidEnrichment({
     reviewed_at: null,
     source: "plaid"
@@ -100,6 +101,14 @@ test("removed pending id is skipped after a posted replacement preserves that ra
     ),
     ["orphan-removed-tx"]
   );
+});
+
+test("imported enrichment refresh preserves manual and reviewed overrides", () => {
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "plaid" }), true);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "rule" }), true);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "plaid" }), false);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "rule" }), false);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "manual" }), false);
 });
 
 function assertPlaidAccountSourceMergeFixtures(): true {
@@ -141,8 +150,8 @@ function assertPlaidPendingReplacementFixtures(): true {
     throw new Error("Expected posted Plaid transaction to replace the matching pending raw row.");
   }
 
-  if (shouldRefreshPlaidEnrichment({ reviewed_at: null, source: "manual" })) {
-    throw new Error("Expected manual enrichment to survive Plaid modified transaction updates.");
+  if (shouldRefreshImportedEnrichment({ reviewed_at: null, source: "manual" })) {
+    throw new Error("Expected manual enrichment to survive imported transaction updates.");
   }
 
   const removedIds = getRemovedPlaidTransactionIdsToDelete(

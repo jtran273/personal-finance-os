@@ -19,6 +19,7 @@ import type {
   EnrichedTransactionRow,
   InstitutionRow,
   Json,
+  MerchantRuleRow,
   PlaidItemRow,
   RawTransactionRow,
   TransactionIntent
@@ -26,6 +27,7 @@ import type {
 import { createConfiguredTransactionSuggestionService } from "../ai/server";
 import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { buildTransactionReviewItems } from "../review/heuristics";
+import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
 import { getPlaidConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
@@ -1182,33 +1184,47 @@ function toCategoryRecordForAi(row: CategoryRow): CategoryRecord {
 
 function buildEnrichedTransactionInsert({
   categoryByName,
+  merchantRules,
   raw,
   transaction,
   userId
 }: {
   categoryByName: Map<string, CategoryRow>;
+  merchantRules: readonly MerchantRuleRow[];
   raw: RawTransactionRow;
   transaction: Transaction | undefined;
   userId: string;
 }): EnrichedTransactionInsert {
   const categoryName = transaction ? getDefaultCategoryName(transaction) : raw.plaid_category ?? "Uncategorized";
+  const categoryRows = [...categoryByName.values()];
+  const categoryById = new Map(categoryRows.map((row) => [row.id, row]));
+  const matchedRule = findMatchingMerchantRule(merchantRules, raw);
+  const ruleEnrichment = matchedRule
+    ? buildRuleAppliedEnrichment(matchedRule, raw, categoryById)
+    : null;
 
   return {
     account_id: raw.account_id,
     amount: raw.amount,
-    category_id: categoryByName.get(categoryName.toLowerCase())?.id ?? null,
-    category_name: categoryName,
-    confidence: transaction ? getDefaultConfidence(transaction) : 0.95,
+    category_id: ruleEnrichment?.categoryId ?? categoryByName.get(categoryName.toLowerCase())?.id ?? null,
+    category_name: ruleEnrichment?.categoryName ?? categoryName,
+    confidence: ruleEnrichment?.confidence ?? (transaction ? getDefaultConfidence(transaction) : 0.95),
     date: raw.date,
-    intent: transaction ? getDefaultIntent(transaction) : "personal",
-    is_recurring: false,
-    merchant_name: transaction ? getMerchantName(transaction) : cleanRequiredText(raw.merchant_name ?? raw.name, "Plaid transaction"),
-    note: "",
+    intent: ruleEnrichment?.intent ?? (transaction ? getDefaultIntent(transaction) : "personal"),
+    is_recurring: ruleEnrichment?.isRecurring ?? false,
+    merchant_name: ruleEnrichment?.merchantName ?? (
+      transaction ? getMerchantName(transaction) : cleanRequiredText(raw.merchant_name ?? raw.name, "Plaid transaction")
+    ),
+    note: ruleEnrichment?.note ?? "",
     raw_transaction_id: raw.id,
-    source: "plaid",
+    source: ruleEnrichment?.source ?? "plaid",
     status: raw.status,
     user_id: userId
   };
+}
+
+export function shouldRefreshImportedEnrichment(existing: Pick<EnrichedTransactionRow, "reviewed_at" | "source">) {
+  return (existing.source === "plaid" || existing.source === "rule") && !existing.reviewed_at;
 }
 
 async function seedEnrichedTransactions({
@@ -1230,15 +1246,22 @@ async function seedEnrichedTransactions({
   }
 
   const rawIds = rawRows.map((row) => row.id);
-  const [existingResult, categoryRows] = await Promise.all([
+  const [existingResult, categoryRows, merchantRulesResult] = await Promise.all([
     client
       .from("enriched_transactions")
       .select("*")
       .eq("user_id", userId)
       .in("raw_transaction_id", rawIds),
-    loadCategoryRows(client, userId)
+    loadCategoryRows(client, userId),
+    client
+      .from("merchant_rules")
+      .select("*")
+      .eq("user_id", userId)
+      .eq("enabled", true)
+      .order("priority")
   ]);
   const existingRows = expectData(existingResult, "Load Plaid enriched transactions") as EnrichedTransactionRow[];
+  const merchantRules = expectData(merchantRulesResult, "Load merchant rules for Plaid enrichment") as MerchantRuleRow[];
   const existingByRawId = new Map(existingRows.map((row) => [row.raw_transaction_id, row]));
   const categoryByName = new Map(categoryRows.map((row) => [row.name.toLowerCase(), row]));
   const inserts: EnrichedTransactionInsert[] = [];
@@ -1249,6 +1272,7 @@ async function seedEnrichedTransactions({
     const existing = existingByRawId.get(raw.id);
     const seed = buildEnrichedTransactionInsert({
       categoryByName,
+      merchantRules,
       raw,
       transaction: transactionByPlaidId.get(raw.plaid_transaction_id),
       userId
@@ -1256,7 +1280,7 @@ async function seedEnrichedTransactions({
 
     if (!existing) {
       inserts.push(seed);
-    } else if (shouldRefreshPlaidEnrichment(existing)) {
+    } else if (shouldRefreshImportedEnrichment(existing)) {
       updates.push(seed);
     }
   }

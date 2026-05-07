@@ -87,6 +87,12 @@ The review queue flags transactions that need judgment, including:
 Users can accept suggestions one at a time, bulk accept accept-ready AI suggestions after reviewing each preview row, dismiss review items, edit transactions, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows stay out of bulk acceptance.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
 
+### Agent Inbox
+
+The `/agent-inbox` route collects finance-agent recommendations into a proposal queue. It shows accept-ready changes from stored review suggestions, safe transaction context, and manual-review routes without exposing raw Plaid payloads, provider identifiers, access tokens, auth headers, or service-role secrets.
+
+Approving an inbox item applies the same explicit review approval path used by `/review`; dismissing an item only resolves the review item as dismissed. Agent output remains advisory and proposal-first.
+
 ### Edit Enriched Records
 
 The transaction edit view lets the user change app-facing fields:
@@ -115,6 +121,7 @@ The CSV export uses the current transaction filters and returns enriched finance
 | `/dashboard` | Net worth, account totals, spending summary, insights, recurring context, review count |
 | `/transactions` | Searchable and filterable enriched transaction table |
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
+| `/agent-inbox` | Proposal queue for sanitized finance-agent recommendations |
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
 | `/recurring` | Recurring expense candidates and confirmed recurring rows |
 | `/accounts` | Accounts grouped by cash, credit, investments, and retirement |

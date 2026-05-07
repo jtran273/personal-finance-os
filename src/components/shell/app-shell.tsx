@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ClipboardList,
   Home,
   Inbox,
   Landmark,
@@ -16,7 +17,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-type RouteKey = "dashboard" | "transactions" | "review" | "recurring" | "accounts" | "settings";
+type RouteKey = "dashboard" | "transactions" | "agentInbox" | "review" | "recurring" | "accounts" | "settings";
 
 type RouteMeta = {
   eyebrow: string;
@@ -27,6 +28,7 @@ type RouteMeta = {
 
 const routeHref: Record<RouteKey, string> = {
   accounts: "/accounts",
+  agentInbox: "/agent-inbox",
   dashboard: "/dashboard",
   recurring: "/recurring",
   review: "/review",
@@ -46,6 +48,12 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
     icon: List,
     label: "Transactions",
     title: "Transactions"
+  },
+  agentInbox: {
+    eyebrow: "Proposed finance changes",
+    icon: ClipboardList,
+    label: "Agent inbox",
+    title: "Agent inbox"
   },
   review: {
     eyebrow: "Items needing your attention",
@@ -73,7 +81,7 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
   }
 };
 
-const navigation: RouteKey[] = ["dashboard", "transactions", "review", "recurring", "accounts", "settings"];
+const navigation: RouteKey[] = ["dashboard", "transactions", "agentInbox", "review", "recurring", "accounts", "settings"];
 
 function currentRoute(pathname: string): RouteKey {
   const match = navigation.find((route) => pathname === routeHref[route] || pathname.startsWith(`${routeHref[route]}/`));
@@ -177,7 +185,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <span>AI suggestions</span>
             </div>
             <div className="ai-card-body">Review cleanup can draft merchant, category, and intent updates for approval.</div>
-            <Link className="ai-card-link" href={routeHref.review}>Open review queue</Link>
+            <Link className="ai-card-link" href={routeHref.agentInbox}>Open agent inbox</Link>
           </div>
           <Link className="user-row" href={routeHref.settings}>
             <div className="avatar">J</div>

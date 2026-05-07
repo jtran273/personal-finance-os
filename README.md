@@ -119,7 +119,7 @@ The CSV export uses the current transaction filters and returns enriched finance
 | Route | What it does |
 | --- | --- |
 | `/login` | Supabase sign-in and optional local demo entry |
-| `/dashboard` | Net worth, account totals, spending summary, insights, recurring context, review count |
+| `/dashboard` | Net worth, account totals, budget guardrails, spending summary, insights, recurring context, review count |
 | `/transactions` | Searchable and filterable enriched transaction table |
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
 | `/agent-inbox` | Proposal queue for sanitized finance-agent recommendations |
@@ -233,7 +233,7 @@ src/lib/ai/                      AI provider interface, deterministic fallback, 
 src/lib/db/                      Typed Supabase query helpers and app-facing finance records
 src/lib/demo/                    Local demo mode and seeded in-memory finance client
 src/lib/export/                  CSV export helpers
-src/lib/finance/                 Balance and spending calculations
+src/lib/finance/                 Balance, budget guardrail, cashflow, and spending calculations
 src/lib/insights/                Dashboard insight generation
 src/lib/plaid/                   Plaid config, client, sync, token vault, and safe error handling
 src/lib/recurring/               Recurring detection and recurring mutations

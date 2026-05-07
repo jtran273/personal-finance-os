@@ -15,6 +15,7 @@ import {
   Database,
   Inbox,
   Landmark,
+  ShieldCheck,
   Sparkles,
   Store,
   Tags,
@@ -27,11 +28,13 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
+import type { BudgetGuardrailItem, BudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
 import type { MonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
 import type { RecurringCandidate } from "@/lib/recurring";
 
 interface DashboardViewProps {
   accounts: AccountRecord[];
+  budgetGuardrails: BudgetGuardrailSummary;
   cashflowRunway: MonthlyCashflowRunwaySummary;
   dataError?: string;
   groups: AccountGroup[];
@@ -587,6 +590,72 @@ function SpendingPanel({ summary }: { summary: SpendingInsightSummary }) {
   );
 }
 
+function guardrailStatusLabel(status: BudgetGuardrailItem["status"]) {
+  if (status === "over") return "Over";
+  if (status === "near") return "Near";
+  return "On track";
+}
+
+function BudgetGuardrailsPanel({ summary }: { summary: BudgetGuardrailSummary }) {
+  const visibleItems = summary.items.filter((item) => item.status !== "on-track").slice(0, 4);
+  const periodLabel = `${formatDate(summary.fromDate)} - ${formatDate(summary.toDate)}`;
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHead}>
+        <div>
+          <div className={styles.eyebrow}>Guardrails</div>
+          <h2>Budget pace</h2>
+        </div>
+        <span className={styles.compactValue}>
+          <ShieldCheck size={14} aria-hidden />
+          {summary.overCount > 0 ? `${summary.overCount} over` : `${summary.nearCount} near`}
+        </span>
+      </div>
+
+      {visibleItems.length === 0 ? (
+        <div className={styles.emptyMini}>No category guardrails are near budget pace.</div>
+      ) : (
+        <div className={styles.guardrailRows}>
+          {visibleItems.map((item) => (
+            <Link
+              className={`${styles.guardrailRow} ${styles[`guardrail-${item.status}`]}`}
+              href={transactionsHref({
+                category: item.id ?? undefined,
+                exclude_transfers: true,
+                from: summary.fromDate,
+                q: item.id ? undefined : item.label,
+                to: summary.toDate
+              })}
+              key={item.id ?? item.label}
+            >
+              <div className={styles.guardrailTop}>
+                <div>
+                  <strong>{item.label}</strong>
+                  <span>{periodLabel} - {item.transactionCount} {item.transactionCount === 1 ? "transaction" : "transactions"}</span>
+                </div>
+                <span className={styles.guardrailBadge}>{guardrailStatusLabel(item.status)}</span>
+              </div>
+              <div className={styles.guardrailMeter} aria-hidden>
+                <span style={{ width: `${Math.min(100, item.percentUsed)}%` }} />
+              </div>
+              <div className={styles.guardrailMeta}>
+                <span>{formatMoney(item.currentAmount)} of {formatMoney(item.budgetAmount)}</span>
+                <span>Projected {formatMoney(item.projectedAmount)} ({item.projectedPercent.toFixed(1)}%)</span>
+              </div>
+              {item.openReviewCount > 0 ? (
+                <div className={styles.guardrailReview}>
+                  {formatMoney(item.unresolvedReviewAmount)} unresolved review impact
+                </div>
+              ) : null}
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function AccountGroups({ groups }: { groups: AccountGroup[] }) {
   return (
     <section className={styles.card}>
@@ -805,6 +874,7 @@ function InsightsPanel({ insights }: { insights: DashboardInsightCard[] }) {
 
 export function DashboardView({
   accounts,
+  budgetGuardrails,
   cashflowRunway,
   dataError,
   groups,
@@ -884,6 +954,7 @@ export function DashboardView({
           <SpendingPanel summary={spendingSummary} />
 
           <div className={styles.contentGrid}>
+            <BudgetGuardrailsPanel summary={budgetGuardrails} />
             <CashflowRunwayPanel summary={cashflowRunway} />
             <RecentTransactions transactions={recentTransactions} />
             <ReviewQueue reviewItems={reviewItems} />

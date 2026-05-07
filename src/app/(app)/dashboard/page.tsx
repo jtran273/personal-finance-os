@@ -20,6 +20,7 @@ import {
   groupAccounts,
   summarizeSync
 } from "@/lib/finance/balances";
+import { buildBudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
 import { buildMonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
 import { buildSpendingInsightSummary } from "@/lib/finance/spending";
 import { buildDashboardInsightCards } from "@/lib/insights";
@@ -101,6 +102,9 @@ export default async function DashboardPage() {
   const spendingSummary = buildSpendingInsightSummary(trendTransactions, {
     asOfDate: now.toISOString().slice(0, 10)
   });
+  const budgetGuardrails = buildBudgetGuardrailSummary(trendTransactions, {
+    asOfDate: now.toISOString().slice(0, 10)
+  });
   const cashflowRunway = buildMonthlyCashflowRunwaySummary({
     accounts,
     asOfDate: now.toISOString().slice(0, 10),
@@ -124,6 +128,7 @@ export default async function DashboardPage() {
   return (
     <DashboardView
       accounts={accounts}
+      budgetGuardrails={budgetGuardrails}
       dataError={dataError}
       groups={groups}
       insightCards={insightCards}

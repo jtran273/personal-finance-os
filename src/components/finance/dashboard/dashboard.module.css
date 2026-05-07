@@ -543,6 +543,112 @@
   font-size: 11.5px;
 }
 
+.guardrailRows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.guardrailRow {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  color: inherit;
+  text-decoration: none;
+}
+
+.guardrailRow:hover {
+  border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+}
+
+.guardrail-over {
+  border-color: color-mix(in oklab, var(--neg) 24%, var(--line));
+  background: color-mix(in oklab, var(--neg) 6%, var(--surface));
+}
+
+.guardrail-near {
+  border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
+  background: color-mix(in oklab, var(--warn) 7%, var(--surface));
+}
+
+.guardrailTop,
+.guardrailMeta {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.guardrailTop div {
+  min-width: 0;
+}
+
+.guardrailTop strong,
+.guardrailTop span,
+.guardrailMeta span,
+.guardrailReview {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.guardrailTop strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.guardrailTop span,
+.guardrailMeta,
+.guardrailReview {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.guardrailBadge {
+  flex: 0 0 auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 11px;
+  line-height: 1;
+}
+
+.guardrailMeter {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line-2);
+}
+
+.guardrailMeter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.guardrail-over .guardrailMeter span {
+  background: var(--neg);
+}
+
+.guardrail-near .guardrailMeter span {
+  background: var(--warn);
+}
+
+.guardrailReview {
+  color: var(--warn);
+}
+
 .groupCard {
   min-width: 0;
   border: 1px solid var(--line-2);
@@ -574,6 +680,12 @@
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.compactValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .groupTop span,
@@ -838,7 +950,9 @@
 
 @media (max-width: 480px) {
   .transactionRow,
-  .spendRow {
+  .spendRow,
+  .guardrailTop,
+  .guardrailMeta {
     align-items: flex-start;
     flex-direction: column;
   }

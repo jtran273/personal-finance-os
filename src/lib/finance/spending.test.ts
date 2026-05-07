@@ -218,5 +218,17 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected confidence caveats to stay separate from raw transaction facts.");
   }
 
+  if (summary.confidence.spendingTransactionCount !== 3 || summary.confidence.trustedSpendingTransactionCount !== 2) {
+    throw new Error("Expected confidence coverage to count only owned spending transactions.");
+  }
+
+  if (summary.confidence.categoryCoveragePercent !== 66.7 || summary.confidence.cleanupCandidateAmount !== 42 || summary.confidence.cleanupCandidateCount !== 1) {
+    throw new Error("Expected confidence coverage to quantify category cleanup scope.");
+  }
+
+  if (summary.confidence.topCleanupActions[0]?.label !== "Uncategorized" || summary.confidence.topCleanupActions[0]?.reasons.join(",") !== "low-confidence,open-review,uncategorized") {
+    throw new Error("Expected cleanup actions to prioritize categories where AI review improves spending clarity.");
+  }
+
   return true;
 }

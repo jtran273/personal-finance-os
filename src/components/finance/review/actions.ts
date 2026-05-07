@@ -25,6 +25,7 @@ import {
 import { buildAcceptedAiMerchantRuleCandidate } from "@/lib/merchant-rules";
 import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
 import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
+import { evaluateAutoCategorization } from "@/lib/review/auto-categorization";
 import { isSpendingIntent } from "@/lib/finance/spending";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
 import { buildBulkReviewPlan } from "@/lib/review/bulk-actions";
@@ -353,6 +354,78 @@ async function getRawTransactionForReviewItem(
   return expectRows<RawTransactionRow>(result, "Load raw transaction for accepted AI rule")[0] ?? null;
 }
 
+async function maybeAutoApplyGeneratedSuggestion({
+  categories,
+  client,
+  item,
+  raw,
+  reviewedAt,
+  transaction,
+  userId
+}: {
+  categories: CategoryRecord[];
+  client: FinanceSupabaseClient;
+  item: ReviewItemRow;
+  raw: RawTransactionRow | null;
+  reviewedAt: string;
+  transaction: EnrichedTransactionRow;
+  userId: string;
+}) {
+  const decision = evaluateAutoCategorization({
+    categories,
+    rawTransaction: raw,
+    reviewReason: item.reason,
+    reviewedAt,
+    suggestion: item.ai_suggestion,
+    transaction
+  });
+
+  if (!decision.shouldApply || !decision.patch) return false;
+
+  await updateTransactionEnrichment(client, userId, transaction.id, decision.patch);
+  const resolved = await resolveReviewItem(
+    client,
+    userId,
+    item.id,
+    "resolved",
+    "Auto-applied high-confidence non-manual categorization."
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "review.suggestion_auto_applied",
+    actorId: null,
+    afterData: {
+      appliedPatch: decision.patch as Record<string, Json | undefined>,
+      aiSuggestion: item.ai_suggestion,
+      resolvedAt: resolved.resolvedAt,
+      status: resolved.status
+    },
+    beforeData: {
+      aiSuggestion: item.ai_suggestion,
+      confidence: item.confidence,
+      reason: item.reason,
+      status: item.status,
+      transaction: {
+        categoryId: transaction.category_id,
+        categoryName: transaction.category_name,
+        confidence: transaction.confidence,
+        intent: transaction.intent,
+        merchantName: transaction.merchant_name,
+        reviewedAt: transaction.reviewed_at,
+        source: transaction.source
+      }
+    },
+    entityId: item.id,
+    entityTable: "review_items",
+    metadata: {
+      reason: decision.reason,
+      transactionId: transaction.id
+    }
+  });
+
+  return true;
+}
+
 export async function generateAiReviewSuggestionsAction(
   _state: ReviewActionState,
   formData: FormData
@@ -413,6 +486,11 @@ export async function generateAiReviewSuggestionsAction(
       transactions
     });
 
+    const transactionById = new Map(transactions.map((transaction) => [transaction.id, transaction]));
+    const rawById = new Map(rawRows.map((raw) => [raw.id, raw]));
+    const reviewedAt = new Date().toISOString();
+    const touchedTransactionIds = new Set<string>();
+    let autoAppliedCount = 0;
     let updatedCount = 0;
     for (const { item } of updates) {
       if (!item.id) continue;
@@ -428,14 +506,42 @@ export async function generateAiReviewSuggestionsAction(
         .eq("status", "open")
         .select("id");
 
-      updatedCount += expectRows<{ id: string }>(result, "Store AI review suggestion").length;
+      const storedRows = expectRows<{ id: string }>(result, "Store AI review suggestion");
+      updatedCount += storedRows.length;
+      if (storedRows.length === 0) continue;
+
+      const transaction = transactionById.get(item.enriched_transaction_id);
+      const raw = transaction ? rawById.get(transaction.raw_transaction_id) ?? null : null;
+      if (!transaction) continue;
+
+      const autoApplied = await maybeAutoApplyGeneratedSuggestion({
+        categories,
+        client,
+        item,
+        raw,
+        reviewedAt,
+        transaction,
+        userId
+      });
+
+      if (autoApplied) {
+        autoAppliedCount += 1;
+        touchedTransactionIds.add(transaction.id);
+      }
     }
 
+    for (const transactionId of touchedTransactionIds) {
+      revalidateReviewPaths(transactionId);
+    }
     revalidateReviewListPaths();
+    const autoAppliedSuffix = autoAppliedCount > 0
+      ? ` Auto-applied ${autoAppliedCount.toLocaleString("en-US")} high-confidence ${autoAppliedCount === 1 ? "cleanup" : "cleanups"}.`
+      : "";
+
     return {
       message: updatedCount === 0
         ? "No new AI suggestions were stored."
-        : `Stored ${updatedCount.toLocaleString("en-US")} AI cleanup ${updatedCount === 1 ? "suggestion" : "suggestions"}.`
+        : `Stored ${updatedCount.toLocaleString("en-US")} AI cleanup ${updatedCount === 1 ? "suggestion" : "suggestions"}.${autoAppliedSuffix}`
     };
   } catch (error) {
     return errorState(error);

@@ -21,6 +21,15 @@ const categories: CategoryRecord[] = [
   {
     color: null,
     icon: null,
+    id: "cat-entertainment",
+    isSystem: true,
+    name: "Entertainment",
+    parentId: null,
+    userId
+  },
+  {
+    color: null,
+    icon: null,
     id: "cat-food",
     isSystem: true,
     name: "Food / Restaurants",
@@ -93,6 +102,60 @@ test("evaluateAutoCategorization auto-applies high-confidence ordinary categoriz
   assert.equal(result.patch?.categoryName, "Software / AI Tools");
   assert.equal(result.patch?.intent, "business");
   assert.equal(result.patch?.merchantName, "OpenAI");
+  assert.equal(result.patch?.reviewedAt, reviewedAt);
+  assert.equal(result.patch?.source, "ai");
+});
+
+test("evaluateAutoCategorization auto-applies high-confidence Entertainment suggestions", () => {
+  const result = decision({
+    rawTransaction: {
+      merchant_name: "Lucky Strike",
+      name: "LUCKY STRIKE BOWLING",
+      status: "posted"
+    },
+    suggestion: suggestion({
+      category: {
+        confidence: 0.96,
+        reason: "Known bowling and entertainment venue merchant.",
+        source: "merchant-cue",
+        value: {
+          id: "cat-entertainment",
+          name: "Entertainment"
+        }
+      },
+      confidence: 0.96,
+      intent: {
+        confidence: 0.96,
+        reason: "Personal entertainment spend.",
+        source: "merchant-cue",
+        value: "personal"
+      },
+      merchantCleanup: {
+        confidence: 0.96,
+        reason: "Normalized merchant.",
+        source: "merchant-cue",
+        value: {
+          normalized: "Lucky Strike",
+          original: "LUCKY STRIKE BOWLING"
+        }
+      },
+      reason: "Known bowling and entertainment venue merchant.",
+      signals: ["merchant cue: LUCKY STRIKE"]
+    }),
+    transaction: {
+      amount: -64,
+      id: "tx-lucky-strike",
+      merchant_name: "Lucky Strike",
+      status: "posted",
+      user_id: userId
+    }
+  });
+
+  assert.equal(result.shouldApply, true);
+  assert.equal(result.patch?.categoryId, "cat-entertainment");
+  assert.equal(result.patch?.categoryName, "Entertainment");
+  assert.equal(result.patch?.intent, "personal");
+  assert.equal(result.patch?.merchantName, "Lucky Strike");
   assert.equal(result.patch?.reviewedAt, reviewedAt);
   assert.equal(result.patch?.source, "ai");
 });

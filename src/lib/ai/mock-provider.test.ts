@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CategoryRecord, MerchantRuleRow } from "@/lib/db";
+import { AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD } from "@/lib/review/auto-categorization";
 import { suggestTransactionWithMockProvider } from "./mock-provider";
 import type { RawTransactionSuggestionFields } from "./types";
 
@@ -16,6 +17,7 @@ const categories: CategoryRecord[] = [
   cat("cat-transfer", "Transfer"),
   cat("cat-income", "Income"),
   cat("cat-shopping", "Shopping"),
+  cat("cat-entertainment", "Entertainment"),
   cat("cat-uncategorized", "Uncategorized")
 ];
 
@@ -114,6 +116,27 @@ test("mock provider: rideshare merchant maps to Transport/Rideshare", () => {
   assert.equal(result.category.value.name, "Transport / Rideshare");
   assert.equal(result.intent.value, "personal");
   assert.equal(result.merchantCleanup.value.normalized, "Uber");
+});
+
+test("mock provider: Lucky Strike bowling maps to Entertainment with auto-apply confidence", () => {
+  const result = suggestTransactionWithMockProvider({
+    categories,
+    rawTransaction: raw({
+      id: "raw-lucky-strike",
+      name: "LUCKY STRIKE BOWLING",
+      merchant_name: "Lucky Strike",
+      amount: -64
+    })
+  });
+
+  assert.equal(result.category.value.name, "Entertainment");
+  assert.equal(result.category.value.id, "cat-entertainment");
+  assert.equal(result.intent.value, "personal");
+  assert.equal(result.merchantCleanup.value.normalized, "Lucky Strike");
+  assert(
+    result.confidence >= AUTO_CATEGORIZATION_CONFIDENCE_THRESHOLD,
+    `Expected auto-apply confidence for Lucky Strike, got ${result.confidence}`
+  );
 });
 
 test("mock provider: ACH transfer gets Transfer category and transfer intent", () => {

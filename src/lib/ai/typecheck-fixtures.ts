@@ -13,6 +13,7 @@ const fixtureCategories = [
   category("40000000-0000-0000-0000-000000000003", "Software / AI Tools"),
   category("40000000-0000-0000-0000-000000000004", "Software / SaaS"),
   category("40000000-0000-0000-0000-000000000015", "Education"),
+  category("40000000-0000-0000-0000-000000000016", "Entertainment"),
   category("40000000-0000-0000-0000-000000000010", "Transfer"),
   category("40000000-0000-0000-0000-000000000011", "Income")
 ] satisfies readonly CategoryRecord[];

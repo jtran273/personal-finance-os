@@ -32,6 +32,7 @@ import type { TransactionEnrichmentPatch } from "../db/queries";
 import { createConfiguredTransactionSuggestionService } from "../ai/server";
 import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { evaluateAutoCategorization } from "../review/auto-categorization";
+import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildTransactionReviewItems } from "../review/heuristics";
 import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
 import { getPlaidConfig } from "./config";
@@ -1247,7 +1248,27 @@ async function loadCategoryRows(client: FinanceSupabaseClient, userId: string) {
     .select("id,user_id,parent_id,name,color,icon,is_system,created_at,updated_at")
     .eq("user_id", userId);
 
-  return expectData(result, "Load categories for Plaid enrichment") as CategoryRow[];
+  const rows = expectData(result, "Load categories for Plaid enrichment") as CategoryRow[];
+  const missingCategories = missingDefaultSystemCategories(rows.map((row) => row.name));
+  if (missingCategories.length === 0) return rows;
+
+  const insertResult = await client
+    .from("categories")
+    .upsert(
+      missingCategories.map((category) => ({
+        color: category.color,
+        icon: category.icon,
+        is_system: true,
+        name: category.name,
+        parent_id: null,
+        user_id: userId
+      })),
+      { ignoreDuplicates: true, onConflict: "user_id,name" }
+    )
+    .select("id,user_id,parent_id,name,color,icon,is_system,created_at,updated_at");
+  const insertedRows = expectData(insertResult, "Insert default Plaid enrichment categories") as CategoryRow[];
+
+  return [...rows, ...insertedRows];
 }
 
 function toCategoryRecordForAi(row: CategoryRow): CategoryRecord {

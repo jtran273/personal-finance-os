@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 const DEFAULT_CATEGORY = "Uncategorized";
-const MOCK_VERSION = "mock-v1";
+const MOCK_VERSION = "mock-v2";
 
 export const MOCK_AI_SUGGESTION_PROVIDER: AiSuggestionProviderDescriptor = {
   id: "mock-deterministic",
@@ -99,7 +99,40 @@ const MERCHANT_CUES: readonly MerchantCue[] = [
     recurring: true
   },
   {
-    patterns: ["SPOTIFY", "SUBSTACK"],
+    patterns: ["LUCKY STRIKE", "BOWLERO", "AMF BOWLING", "BOWLING"],
+    categoryName: "Entertainment",
+    intent: "personal",
+    confidence: 0.96,
+    reason: "Known bowling and entertainment venue merchant.",
+    normalizedMerchantName: normalizeKnownMerchantName
+  },
+  {
+    patterns: ["AMC", "REGAL", "CINEMARK", "ALAMO DRAFTHOUSE", "FANDANGO", "MOVIE", "CINEMA"],
+    categoryName: "Entertainment",
+    intent: "personal",
+    confidence: 0.94,
+    reason: "Known movie and cinema merchant.",
+    normalizedMerchantName: normalizeKnownMerchantName
+  },
+  {
+    patterns: ["TICKETMASTER", "LIVE NATION", "AXS", "SEATGEEK", "EVENTBRITE"],
+    categoryName: "Entertainment",
+    intent: "personal",
+    confidence: 0.93,
+    reason: "Known event ticketing merchant.",
+    normalizedMerchantName: normalizeKnownMerchantName
+  },
+  {
+    patterns: ["NETFLIX", "HULU", "DISNEY+", "DISNEY PLUS", "HBO MAX", "PARAMOUNT+", "PEACOCK", "APPLE TV", "SPOTIFY"],
+    categoryName: "Entertainment",
+    intent: "personal",
+    confidence: 0.93,
+    reason: "Known personal entertainment subscription merchant.",
+    normalizedMerchantName: normalizeKnownMerchantName,
+    recurring: true
+  },
+  {
+    patterns: ["SUBSTACK"],
     categoryName: "Software / SaaS",
     intent: "personal",
     confidence: 0.86,
@@ -216,6 +249,13 @@ const PLAID_CATEGORY_CUES: readonly PlaidCategoryCue[] = [
     intent: "personal",
     confidence: 0.7,
     reason: "Plaid category indicates transport."
+  },
+  {
+    patterns: ["ENTERTAINMENT", "RECREATION", "BOWLING", "MOVIE", "CINEMA", "MUSIC", "ARTS"],
+    categoryName: "Entertainment",
+    intent: "personal",
+    confidence: 0.82,
+    reason: "Plaid category indicates entertainment or recreational spending."
   },
   {
     patterns: ["SERVICE"],
@@ -533,6 +573,25 @@ function normalizeKnownMerchantName(merchant: string) {
     ["GITHUB", "GitHub"],
     ["SPOTIFY", "Spotify"],
     ["SUBSTACK", "Substack"],
+    ["LUCKY STRIKE", "Lucky Strike"],
+    ["BOWLERO", "Bowlero"],
+    ["AMF BOWLING", "AMF Bowling"],
+    ["AMC", "AMC Theatres"],
+    ["REGAL", "Regal"],
+    ["CINEMARK", "Cinemark"],
+    ["ALAMO DRAFTHOUSE", "Alamo Drafthouse"],
+    ["FANDANGO", "Fandango"],
+    ["TICKETMASTER", "Ticketmaster"],
+    ["LIVE NATION", "Live Nation"],
+    ["SEATGEEK", "SeatGeek"],
+    ["EVENTBRITE", "Eventbrite"],
+    ["NETFLIX", "Netflix"],
+    ["HULU", "Hulu"],
+    ["DISNEY", "Disney+"],
+    ["HBO MAX", "HBO Max"],
+    ["PARAMOUNT", "Paramount+"],
+    ["PEACOCK", "Peacock"],
+    ["APPLE TV", "Apple TV"],
     ["SWEETGREEN", "Sweetgreen"],
     ["WHOLE FOODS", "Whole Foods"],
     ["TRADER JOE", "Trader Joe's"],

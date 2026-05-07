@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { ArrowRight, GraduationCap, Plus } from "lucide-react";
+import { ArrowRight, GraduationCap, Plus, Ticket } from "lucide-react";
 import Link from "next/link";
 import type { CategoryRecord } from "@/lib/db";
 import { createCategoryAction, type CategoryActionState } from "./actions";
@@ -33,6 +33,7 @@ interface CategoryManagerProps {
 export function CategoryManager({ categories, spendingRows }: CategoryManagerProps) {
   const [state, formAction, isPending] = useActionState(createCategoryAction, initialState);
   const hasEducation = categories.some((category) => category.name.toLowerCase() === "education");
+  const hasEntertainment = categories.some((category) => category.name.toLowerCase() === "entertainment");
   const maxAmount = Math.max(...spendingRows.map((row) => row.amount), 1);
 
   return (
@@ -53,6 +54,16 @@ export function CategoryManager({ categories, spendingRows }: CategoryManagerPro
           <button className={styles.primaryButton} disabled={hasEducation || isPending} type="submit">
             <GraduationCap size={14} aria-hidden />
             {hasEducation ? "Education ready" : "Add Education"}
+          </button>
+        </form>
+
+        <form action={formAction} className={styles.categoryQuickForm}>
+          <input name="categoryName" type="hidden" defaultValue="Entertainment" />
+          <input name="color" type="hidden" defaultValue="#be185d" />
+          <input name="icon" type="hidden" defaultValue="ticket" />
+          <button className={styles.primaryButton} disabled={hasEntertainment || isPending} type="submit">
+            <Ticket size={14} aria-hidden />
+            {hasEntertainment ? "Entertainment ready" : "Add Entertainment"}
           </button>
         </form>
 

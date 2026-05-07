@@ -29,6 +29,7 @@ import type {
   TransactionSplitRecord,
   TransactionSplitRow
 } from "./types";
+import { missingDefaultSystemCategories } from "../finance/default-categories";
 
 interface QueryError {
   message: string;
@@ -508,7 +509,28 @@ export async function listAccounts(client: FinanceSupabaseClient, userId: string
 
 export async function listCategories(client: FinanceSupabaseClient, userId: string): Promise<CategoryRecord[]> {
   const result = await client.from("categories").select("*").eq("user_id", userId).order("name");
-  return expectData(result, "List categories").map(toCategoryRecord);
+  const rows = expectData(result, "List categories");
+  const missingCategories = missingDefaultSystemCategories(rows.map((row) => row.name));
+
+  if (missingCategories.length > 0) {
+    const insertRows: CategoryInsert[] = missingCategories.map((category) => ({
+      color: category.color,
+      icon: category.icon,
+      is_system: true,
+      name: category.name,
+      parent_id: null,
+      user_id: userId
+    }));
+    const insertResult = await client
+      .from("categories")
+      .upsert(insertRows, { ignoreDuplicates: true, onConflict: "user_id,name" })
+      .select("*");
+    rows.push(...expectData(insertResult, "Insert default categories"));
+  }
+
+  return rows
+    .map(toCategoryRecord)
+    .sort((left, right) => left.name.localeCompare(right.name));
 }
 
 export async function listMerchantRules(client: FinanceSupabaseClient, userId: string): Promise<MerchantRuleRow[]> {

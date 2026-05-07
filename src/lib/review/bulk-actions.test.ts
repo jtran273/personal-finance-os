@@ -24,6 +24,7 @@ function transaction(overrides: Partial<TransactionRecord> = {}): TransactionRec
     plaidTransactionId: "plaid-hidden",
     rawTransactionId: "raw-hidden",
     recurring: false,
+    reimbursements: [],
     reviewedAt: null,
     reviewItems: [],
     reviewReason: "missing-category",

@@ -142,6 +142,7 @@ type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transact
 type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
 type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
 type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
+type MerchantRuleInsert = Database["public"]["Tables"]["merchant_rules"]["Insert"];
 type RecurringExpenseInsert = Database["public"]["Tables"]["recurring_expenses"]["Insert"];
 type RecurringExpenseUpdate = Database["public"]["Tables"]["recurring_expenses"]["Update"];
 type ReviewItemUpdate = Database["public"]["Tables"]["review_items"]["Update"];
@@ -153,6 +154,19 @@ export interface TransactionSplitMutationInput {
   intent: TransactionIntent;
   label: string;
   notes?: string | null;
+}
+
+export interface MerchantRuleMutationInput {
+  categoryId: string | null;
+  enabled?: boolean;
+  intent: TransactionIntent | null;
+  isRecurring: boolean | null;
+  maxAmount?: number | null;
+  merchantPattern: string;
+  minAmount?: number | null;
+  normalizedMerchantName: string | null;
+  notes?: string | null;
+  priority: number;
 }
 
 function expectData<T>(result: QueryResult<T>, context: string): T {
@@ -458,6 +472,33 @@ export async function listMerchantRules(client: FinanceSupabaseClient, userId: s
     .eq("user_id", userId)
     .order("priority");
   return expectData(result, "List merchant rules");
+}
+
+export async function upsertMerchantRule(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: MerchantRuleMutationInput
+): Promise<MerchantRuleRow> {
+  const insert: MerchantRuleInsert = {
+    category_id: input.categoryId,
+    enabled: input.enabled ?? true,
+    intent: input.intent,
+    is_recurring: input.isRecurring,
+    max_amount: input.maxAmount ?? null,
+    merchant_pattern: input.merchantPattern,
+    min_amount: input.minAmount ?? null,
+    normalized_merchant_name: input.normalizedMerchantName,
+    notes: input.notes ?? null,
+    priority: input.priority,
+    user_id: userId
+  };
+  const result = await client
+    .from("merchant_rules")
+    .upsert(insert, { onConflict: "user_id,merchant_pattern,priority" })
+    .select("*")
+    .single();
+
+  return expectData(result, "Upsert merchant rule");
 }
 
 export async function getCategoryById(

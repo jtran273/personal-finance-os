@@ -1,5 +1,7 @@
 import { AccountType as PlaidAccountType, type AccountBase } from "plaid";
-import { mergePlaidAccountSourcesForSync } from "./service";
+import assert from "node:assert/strict";
+import test from "node:test";
+import { mergePlaidAccountSourcesForSync, shouldRefreshImportedEnrichment } from "./service";
 
 function account(accountId: string, name: string, current: number): AccountBase {
   return {
@@ -36,6 +38,14 @@ export const plaidAccountSourceMergeFixture = mergePlaidAccountSourcesForSync({
 });
 
 export const plaidAccountSourceMergeStaticAssertions = assertPlaidAccountSourceMergeFixtures();
+
+test("Plaid enrichment refresh preserves manual and reviewed overrides", () => {
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "plaid" }), true);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "rule" }), true);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "plaid" }), false);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: "2026-05-06T12:00:00.000Z", source: "rule" }), false);
+  assert.equal(shouldRefreshImportedEnrichment({ reviewed_at: null, source: "manual" }), false);
+});
 
 function assertPlaidAccountSourceMergeFixtures(): true {
   if (!plaidAccountsGetFallbackFixture.some((item) => item.account_id === "acct-get")) {

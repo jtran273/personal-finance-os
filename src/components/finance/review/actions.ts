@@ -9,6 +9,7 @@ import {
   replaceTransactionSplits,
   resolveReviewItem,
   updateTransactionEnrichment,
+  upsertMerchantRule,
   type CategoryRecord,
   type EnrichedTransactionRow,
   type FinanceSupabaseClient,
@@ -20,6 +21,7 @@ import {
   type TransactionSplitMutationInput,
   type TransactionSplitRecord
 } from "@/lib/db";
+import { buildAcceptedAiMerchantRuleCandidate } from "@/lib/merchant-rules";
 import { createConfiguredTransactionSuggestionService } from "@/lib/ai/server";
 import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
 import { isSpendingIntent } from "@/lib/finance/spending";
@@ -247,6 +249,20 @@ function transactionAuditData(item: ReviewQueueItem): Record<string, Json> {
   };
 }
 
+async function getRawTransactionForReviewItem(
+  client: FinanceSupabaseClient,
+  userId: string,
+  item: ReviewQueueItem
+) {
+  const result = await client
+    .from("raw_transactions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", item.transaction.rawTransactionId)
+    .limit(1);
+  return expectRows<RawTransactionRow>(result, "Load raw transaction for accepted AI rule")[0] ?? null;
+}
+
 export async function generateAiReviewSuggestionsAction(
   _state: ReviewActionState,
   formData: FormData
@@ -359,7 +375,29 @@ export async function acceptReviewSuggestionAction(
       return { error: "This review item does not include an accept-ready suggestion." };
     }
 
+    const rawTransaction = await getRawTransactionForReviewItem(client, userId, item);
+    const ruleCandidate = buildAcceptedAiMerchantRuleCandidate({
+      categories,
+      rawTransaction,
+      suggestion,
+      transaction: {
+        amount: item.transaction.amount,
+        merchant_name: item.transaction.merchant
+      }
+    });
+
     await updateTransactionEnrichment(client, userId, item.transaction.id, patch);
+    const merchantRule = ruleCandidate
+      ? await upsertMerchantRule(client, userId, {
+        categoryId: ruleCandidate.categoryId,
+        intent: ruleCandidate.intent,
+        isRecurring: ruleCandidate.isRecurring,
+        merchantPattern: ruleCandidate.merchantPattern,
+        normalizedMerchantName: ruleCandidate.normalizedMerchantName,
+        notes: ruleCandidate.notes,
+        priority: ruleCandidate.priority
+      })
+      : null;
     const resolved = await resolveReviewItem(
       client,
       userId,
@@ -381,10 +419,26 @@ export async function acceptReviewSuggestionAction(
       entityId: item.id,
       entityTable: "review_items",
       metadata: {
+        merchantRuleId: merchantRule?.id ?? null,
         reason: item.reason,
         transactionId: item.transaction.id
       }
     });
+
+    if (merchantRule) {
+      await recordAuditEvent(client, userId, {
+        action: "merchant_rule.ai_accepted_upserted",
+        actorId: userId,
+        afterData: merchantRule as unknown as Record<string, Json | undefined>,
+        beforeData: null,
+        entityId: merchantRule.id,
+        entityTable: "merchant_rules",
+        metadata: {
+          reviewItemId: item.id,
+          transactionId: item.transaction.id
+        }
+      });
+    }
 
     revalidateReviewPaths(item.transaction.id);
     return { message: "Suggestion accepted." };

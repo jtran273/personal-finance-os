@@ -1,16 +1,25 @@
 import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
 import type {
   AccountRecord,
+  MerchantRuleRow,
   RecurringExpenseRecord,
   ReviewQueueItem,
   TransactionRecord
 } from "@/lib/db";
 import type { AiProviderStatus } from "@/lib/ai/server";
 import type { PlaidConnectionSummary, PlaidPersistedSyncRunSummary } from "@/lib/plaid/service";
+import { buildSpendingInsightSummary } from "@/lib/finance/spending";
 import { buildFirstRunChecklist, type FirstRunChecklistItem } from "@/lib/settings/first-run-checklist";
 import { ArrowRight, BrainCircuit, CheckCircle2, Circle, Clock3, Database, LogOut, Repeat, ShieldCheck, TriangleAlert, WalletCards, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import styles from "./settings.module.css";
+
+const moneyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 2,
+  style: "currency"
+});
 
 interface SettingsViewProps {
   accounts: AccountRecord[];
@@ -20,6 +29,7 @@ interface SettingsViewProps {
   isDemo: boolean;
   isSignedIn: boolean;
   latestPlaidSyncRun: PlaidPersistedSyncRunSummary | null;
+  merchantRules: MerchantRuleRow[];
   plaidConnections: PlaidConnectionSummary[];
   recurringExpenses: RecurringExpenseRecord[];
   reviewItems: ReviewQueueItem[];
@@ -206,6 +216,7 @@ export function SettingsView({
   isDemo,
   isSignedIn,
   latestPlaidSyncRun,
+  merchantRules,
   plaidConnections,
   recurringExpenses,
   reviewItems,
@@ -213,6 +224,9 @@ export function SettingsView({
 }: SettingsViewProps) {
   const spendingTransactions = transactions.filter((transaction) => transaction.amount < 0 && transaction.intent !== "transfer").length;
   const activeRecurring = recurringExpenses.filter((expense) => expense.status === "active" || expense.status === "pending").length;
+  const activeMerchantRules = merchantRules.filter((rule) => rule.enabled).length;
+  const spendingSummary = buildSpendingInsightSummary(transactions);
+  const categoryConfidence = spendingSummary.confidence;
   const checklist = buildFirstRunChecklist({
     accounts,
     aiProviderStatus,
@@ -267,6 +281,37 @@ export function SettingsView({
       <PlaidConnectionPanel />
 
       <SyncObservabilityPanel connections={plaidConnections} latestRun={latestPlaidSyncRun} />
+
+      <section className={styles.panel}>
+        <div className={styles.panelHead}>
+          <div>
+            <div className={styles.eyebrow}>AI learning loop</div>
+            <h2>Category cleanup coverage</h2>
+          </div>
+          <span className={`${styles.statusPill} ${categoryConfidence.cleanupCandidateCount === 0 ? styles.statusReady : styles.statusFallback}`}>
+            <BrainCircuit size={13} aria-hidden />
+            {categoryConfidence.categoryCoveragePercent.toFixed(1)}% trusted
+          </span>
+        </div>
+        <div className={styles.metricGrid}>
+          <SettingMetric icon={ShieldCheck} label="Trusted rows" value={`${categoryConfidence.trustedSpendingTransactionCount.toLocaleString("en-US")} / ${categoryConfidence.spendingTransactionCount.toLocaleString("en-US")}`} />
+          <SettingMetric icon={TriangleAlert} label="Needs cleanup" value={categoryConfidence.cleanupCandidateCount.toLocaleString("en-US")} />
+          <SettingMetric icon={BrainCircuit} label="Merchant rules" value={activeMerchantRules.toLocaleString("en-US")} />
+          <SettingMetric icon={Database} label="Cleanup amount" value={moneyFormatter.format(categoryConfidence.cleanupCandidateAmount)} />
+        </div>
+        <div className={styles.settingList}>
+          <div className={styles.settingRow}>
+            <div>
+              <div className={styles.settingTitle}>Accepting AI suggestions trains future imports</div>
+              <div className={styles.settingSub}>Accepted merchant/category/intent suggestions create merchant rules, then future matching transactions can be categorized before they hit the dashboard.</div>
+            </div>
+            <Link className={styles.checkAction} href="/transactions?quality=needs-cleanup&exclude_transfers=1">
+              Review cleanup
+              <ArrowRight size={13} aria-hidden />
+            </Link>
+          </div>
+        </div>
+      </section>
 
       <section className={styles.panel}>
         <div className={styles.panelHead}>

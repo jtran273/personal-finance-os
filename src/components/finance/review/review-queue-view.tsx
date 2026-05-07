@@ -319,7 +319,7 @@ function ReviewCard({ categories, item }: { categories: CategoryRecord[]; item: 
   const canDismiss = !peerToPeer;
 
   return (
-    <article className={styles.reviewCard}>
+    <article className={styles.reviewCard} id={`review-${item.id}`}>
       <div className={styles.reviewCardHead}>
         <div>
           <div className={styles.reasonLine}>

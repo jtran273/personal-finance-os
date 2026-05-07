@@ -43,6 +43,7 @@ Plaid API
 | `/dashboard` | Today dashboard, net worth, insights, review nudges | Accounts, snapshots, transactions, review items, recurring rows, insights |
 | `/transactions` | Searchable/filterable transaction table | Accounts, categories, enriched transactions |
 | `/transactions/[transactionId]` | Transaction edit surface | One enriched transaction plus categories |
+| `/agent-inbox` | Sanitized proposal inbox for finance-agent recommendations | Open review items and normalized review suggestions |
 | `/review` | Review queue and split workflow | Review items, categories, transactions |
 | `/recurring` | Recurring candidates and recurring rows | Transactions, recurring expenses |
 | `/accounts` | Accounts grouped by finance type | Accounts and balance snapshots |
@@ -139,6 +140,8 @@ Users can accept suggestions, dismiss review items, edit transactions, or alloca
 `src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server.
 
 AI suggestions are advisory. They do not autonomously edit finance records.
+
+The agent inbox at `/agent-inbox` is a proposal-first surface over stored review suggestions. It renders minimized enriched transaction context plus safe Plaid labels, omitting raw Plaid payloads, provider ids, tokens, auth headers, service-role keys, and cursors. Approvals reuse the explicit review acceptance action so writes stay user-initiated and audit-backed.
 
 ## Caching And Rendering
 

@@ -1,0 +1,371 @@
+.shell {
+  display: flex;
+  width: min(100%, var(--content-max));
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.summaryTile {
+  display: flex;
+  min-width: 0;
+  min-height: 104px;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+}
+
+.summaryTile span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.summaryTile strong {
+  overflow-wrap: anywhere;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.ok {
+  border-color: color-mix(in oklab, var(--pos) 22%, var(--line));
+}
+
+.warn {
+  border-color: color-mix(in oklab, var(--warn) 26%, var(--line));
+  background: color-mix(in oklab, var(--warn) 5%, var(--surface));
+}
+
+.safetyPanel {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid color-mix(in oklab, var(--accent) 20%, var(--line));
+  border-radius: 8px;
+  padding: 15px 16px;
+  background: color-mix(in oklab, var(--accent) 5%, var(--surface));
+  color: var(--ink-2);
+}
+
+.safetyPanel h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.safetyPanel p {
+  max-width: 860px;
+  margin: 5px 0 0;
+  font-size: 13px;
+}
+
+.notice,
+.errorNotice,
+.emptyState {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px 16px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.errorNotice {
+  border-color: color-mix(in oklab, var(--neg) 26%, var(--line));
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+}
+
+.emptyState {
+  display: flex;
+  min-height: 260px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.emptyState h2 {
+  margin: 10px 0 4px;
+  font-size: 20px;
+}
+
+.emptyState p {
+  max-width: 460px;
+  margin: 0 0 14px;
+  color: var(--muted);
+}
+
+.proposalStack {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.proposalCard {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardHead {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.metaLine {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 7px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.readyBadge,
+.reviewBadge {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.readyBadge {
+  background: color-mix(in oklab, var(--pos) 12%, var(--surface));
+  color: var(--pos);
+}
+
+.reviewBadge {
+  background: color-mix(in oklab, var(--warn) 12%, var(--surface));
+  color: var(--warn);
+}
+
+.proposalCard h2 {
+  margin: 6px 0 4px;
+  overflow-wrap: anywhere;
+  font-size: 20px;
+  line-height: 1.15;
+}
+
+.proposalCard p {
+  max-width: 850px;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
+.amountBlock {
+  text-align: right;
+}
+
+.amountBlock strong {
+  display: block;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.amountBlock span {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.changeTable {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+  overflow: hidden;
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+}
+
+.changeRow {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 110px minmax(0, 1fr) 18px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.changeRow span,
+.changeRow div,
+.changeRow strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.changeRow span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.changeRow div {
+  color: var(--ink-2);
+}
+
+.contextGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 12px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--line);
+}
+
+.contextGrid div {
+  min-width: 0;
+  padding: 11px 12px;
+  background: var(--surface);
+}
+
+.contextGrid dt {
+  margin-bottom: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.contextGrid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--ink-2);
+}
+
+.signalRow {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.signalRow span {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 7px;
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.emptyProposal {
+  margin-top: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.actionRow {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 14px;
+}
+
+.primaryButton,
+.secondaryButton,
+.iconLink {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-radius: 7px;
+  padding: 0 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.primaryButton {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.secondaryButton,
+.iconLink {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-2);
+}
+
+.iconLink {
+  width: 34px;
+  padding: 0;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.inlineError {
+  flex-basis: 100%;
+  color: var(--neg);
+  font-size: 12px;
+}
+
+@media (max-width: 980px) {
+  .summaryGrid,
+  .contextGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .cardHead {
+    grid-template-columns: 1fr;
+  }
+
+  .amountBlock {
+    text-align: left;
+  }
+}
+
+@media (max-width: 680px) {
+  .summaryGrid,
+  .contextGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .changeRow {
+    grid-template-columns: 1fr;
+  }
+
+  .changeRow svg {
+    display: none;
+  }
+}

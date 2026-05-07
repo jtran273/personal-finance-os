@@ -2,6 +2,7 @@ import type { AccountRecord, RecurringExpenseRecord, TransactionRecord } from "@
 import type { RecurringCandidate } from "@/lib/recurring";
 import {
   buildMonthlyCashflowRunwaySummary,
+  buildUpcomingCashflowTimeline,
   monthlyRecurringEquivalent
 } from "./cashflow";
 
@@ -124,6 +125,7 @@ function candidate(input: Partial<RecurringCandidate> = {}): RecurringCandidate 
 }
 
 export const monthlyCashflowRunwayAssertions = assertMonthlyCashflowRunway();
+export const upcomingCashflowTimelineAssertions = assertUpcomingCashflowTimeline();
 
 function assertMonthlyCashflowRunway(): true {
   if (monthlyRecurringEquivalent(12, "weekly") !== 52) {
@@ -200,6 +202,60 @@ function assertMonthlyCashflowRunway(): true {
 
   if (summary.priceChanges[0]?.merchant !== "Streaming Co" || summary.priceChanges[0]?.previousAmount !== 10) {
     throw new Error("Expected known recurring price changes to become actionable cashflow signals.");
+  }
+
+  return true;
+}
+
+function assertUpcomingCashflowTimeline(): true {
+  const summary = buildUpcomingCashflowTimeline({
+    accounts: [account({ balance: 1250 })],
+    asOfDate: "2026-05-07",
+    recurringExpenses: [
+      recurring({
+        amount: 2400,
+        id: "rec-rent",
+        merchant: "Rent",
+        nextDueDate: "2026-05-10"
+      }),
+      recurring({
+        amount: 40,
+        cadence: "weekly",
+        id: "rec-therapy",
+        merchant: "Therapy",
+        nextDueDate: "2026-05-08"
+      }),
+      recurring({
+        amount: 10,
+        id: "rec-paused",
+        merchant: "Paused App",
+        nextDueDate: "2026-05-09",
+        status: "paused"
+      })
+    ],
+    transactions: [
+      transaction({ amount: 5000, category: "Income", date: "2026-04-17", id: "tx-payroll-1", merchant: "Payroll", recurring: true }),
+      transaction({ amount: 5000, category: "Income", date: "2026-05-01", id: "tx-payroll-2", merchant: "Payroll", recurring: true }),
+      transaction({ amount: 200, category: "Income", date: "2026-05-02", id: "tx-transfer", intent: "transfer", merchant: "Transfer", recurring: true }),
+      transaction({ amount: -20, date: "2026-05-03", id: "tx-bill", merchant: "Cloud App", recurring: true })
+    ]
+  });
+
+  const eventLabels = summary.events.map((event) => `${event.date}:${event.direction}:${event.merchant}:${event.amount}`);
+  if (!eventLabels.includes("2026-05-15:income:Payroll:5000") || !eventLabels.includes("2026-05-29:income:Payroll:5000")) {
+    throw new Error("Expected recurring income history to project deterministic upcoming deposits.");
+  }
+
+  if (eventLabels.some((label) => label.includes("Transfer")) || eventLabels.some((label) => label.includes("Paused App"))) {
+    throw new Error("Expected transfer income and paused recurring rows to stay out of upcoming cashflow.");
+  }
+
+  if (summary.billTotal !== 2600 || summary.incomeTotal !== 10000 || summary.netTotal !== 7400) {
+    throw new Error("Expected next-30-day totals to separate bills, income, and net readiness.");
+  }
+
+  if (summary.projectedCashBalance !== 8650 || summary.dueSoonCount !== 2) {
+    throw new Error("Expected projected cash balance and due-soon bill count to be deterministic.");
   }
 
   return true;

@@ -750,6 +750,7 @@ function ReviewQueue({ reviewItems }: { reviewItems: ReviewQueueItem[] }) {
 function CashflowRunwayPanel({ summary }: { summary: MonthlyCashflowRunwaySummary }) {
   const netTone = summary.currentMonth.netCashflow >= 0 ? "positive" : "negative";
   const syncText = syncLabel(summary.syncSummary);
+  const readinessTone = summary.upcomingCashflow.netTotal >= 0 ? "positive" : "negative";
 
   return (
     <section className={styles.card}>
@@ -777,11 +778,18 @@ function CashflowRunwayPanel({ summary }: { summary: MonthlyCashflowRunwaySummar
           <span>Confirmed recurring load</span>
           <strong>{formatMoney(summary.confirmedRecurringMonthlyLoad)}</strong>
         </div>
+        <div>
+          <span>Next 30 days</span>
+          <strong className={styles[readinessTone]}>{formatSignedMoney(summary.upcomingCashflow.netTotal)}</strong>
+        </div>
       </div>
       <div className={styles.cashflowMeta}>
         <span>
           Pending recurring signals: {summary.pendingRecurringCount.toLocaleString("en-US")}
           {summary.pendingRecurringCount > 0 ? ` (${formatMoney(summary.pendingRecurringMonthlyLoad)}/mo not confirmed)` : ""}
+        </span>
+        <span>
+          Upcoming income {formatMoney(summary.upcomingCashflow.incomeTotal)} against bills {formatMoney(summary.upcomingCashflow.billTotal)}
         </span>
         <span>{syncText} sync - {formatRelativeTime(summary.syncSummary.latestSyncedAt)}</span>
       </div>
@@ -800,14 +808,15 @@ function RecurringPanel({
 }) {
   const visibleRecurring = recurringExpenses.filter((expense) => expense.status !== "dismissed");
   const priceChange = summary.priceChanges[0];
+  const timeline = summary.upcomingCashflow;
   return (
     <section className={styles.card}>
       <div className={styles.cardHead}>
         <div>
           <div className={styles.eyebrow}>Recurring</div>
-          <h2>Upcoming fixed costs</h2>
+          <h2>Cashflow calendar</h2>
         </div>
-        <span className={styles.compactValue}>{formatMoney(summary.confirmedRecurringMonthlyLoad)}</span>
+        <span className={styles.compactValue}>{formatSignedMoney(timeline.netTotal)}</span>
       </div>
       {priceChange ? (
         <div className={styles.inlineAlert}>
@@ -815,21 +824,37 @@ function RecurringPanel({
           <span>{priceChange.merchant} changed from {formatMoney(priceChange.previousAmount)} to {formatMoney(priceChange.currentAmount)}</span>
         </div>
       ) : null}
-      {visibleRecurring.length === 0 ? (
-        <div className={styles.emptyMini}>No persisted recurring expenses yet.</div>
+      {timeline.projectedCashBalance !== null ? (
+        <div className={styles.readinessStrip}>
+          <span>Cash after scheduled activity</span>
+          <strong className={timeline.projectedCashBalance >= 0 ? styles.positive : styles.negative}>
+            {formatMoney(timeline.projectedCashBalance)}
+          </strong>
+        </div>
+      ) : null}
+      {timeline.events.length === 0 ? (
+        <div className={styles.emptyMini}>No scheduled income or bills in the next 30 days.</div>
       ) : (
         <div className={styles.itemList}>
-          {visibleRecurring.slice(0, 4).map((expense) => (
-            <div className={styles.transactionRow} key={expense.id}>
+          {timeline.events.slice(0, 5).map((event) => (
+            <div className={styles.transactionRow} key={event.id}>
               <div>
-                <strong>{expense.merchant}</strong>
-                <span>{expense.cadence} - due {formatDate(expense.nextDueDate)}</span>
+                <strong>{event.merchant}</strong>
+                <span>
+                  {event.direction === "income" ? "Income" : "Bill"} - {event.cadence} - {formatDate(event.date)}
+                  {event.status === "pending" ? " - pending" : ""}
+                </span>
               </div>
-              <span className={styles.amount}>{formatMoney(expense.amount)}</span>
+              <span className={`${styles.amount} ${event.direction === "income" ? styles.positive : styles.negative}`}>
+                {formatSignedMoney(event.direction === "income" ? event.amount : -event.amount)}
+              </span>
             </div>
           ))}
         </div>
       )}
+      {visibleRecurring.length === 0 && timeline.events.some((event) => event.direction === "income") ? (
+        <div className={styles.pendingNote}>Income projections come from recurring posted transaction history.</div>
+      ) : null}
       {recurringCandidates.filter((candidate) => candidate.isNew).length > 0 ? (
         <div className={styles.pendingNote}>
           {recurringCandidates.filter((candidate) => candidate.isNew).length.toLocaleString("en-US")} detected candidates are pending and excluded from confirmed load.

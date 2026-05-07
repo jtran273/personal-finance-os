@@ -109,6 +109,7 @@ Raw Plaid fields stay preserved for context and auditability.
 ### Track Recurring Spending
 
 The recurring detector scans imported transactions for repeated merchant, amount, and cadence patterns. Users can confirm or dismiss candidates from `/recurring`.
+The recurring page and dashboard also build a deterministic next-30-day cashflow calendar from confirmed or pending recurring rows plus recurring positive transaction history, so upcoming bills, expected income, and projected cash after scheduled activity can be reviewed without exposing provider identifiers.
 
 ### Export
 
@@ -124,7 +125,7 @@ The CSV export uses the current transaction filters and returns enriched finance
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
 | `/agent-inbox` | Proposal queue for sanitized finance-agent recommendations |
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
-| `/recurring` | Recurring expense candidates and confirmed recurring rows |
+| `/recurring` | Recurring expense candidates, confirmed recurring rows, and the next-30-day cashflow calendar |
 | `/accounts` | Accounts grouped by cash, credit, investments, and retirement |
 | `/settings` | Plaid connection, manual sync, disconnect, and provider status |
 

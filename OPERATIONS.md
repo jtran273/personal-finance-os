@@ -104,11 +104,12 @@ After a Vercel deployment:
 3. Sign in with Supabase Auth.
 4. Confirm `/dashboard` loads.
 5. Confirm `/transactions`, `/review`, `/recurring`, `/accounts`, and `/settings` load.
-6. Confirm Settings shows the intended Plaid environment.
-7. Run a manual Plaid sync only after confirming the environment.
-8. Export a CSV from `/transactions` and confirm no secrets are present.
-9. Check browser devtools for blocked CSP resources.
-10. Check Vercel logs for safe, non-secret errors only.
+6. Confirm the dashboard and `/recurring` show the next-30-day cashflow calendar using safe merchant/date/amount fields only.
+7. Confirm Settings shows the intended Plaid environment.
+8. Run a manual Plaid sync only after confirming the environment.
+9. Export a CSV from `/transactions` and confirm no secrets are present.
+10. Check browser devtools for blocked CSP resources.
+11. Check Vercel logs for safe, non-secret errors only.
 
 ## Plaid Connection Check
 

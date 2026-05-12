@@ -126,6 +126,8 @@ OpenClaw handoff payloads should use this envelope:
 
 OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. The current `/agent-inbox` UI derives proposals from open review items and stored review suggestions; a persistent generic proposal store is still future work. If a future integration adds an apply endpoint, it must be separate from this manifest, same-origin protected, user scoped, audited, and named as an approval action rather than an agent action.
 
+The narrower assistant context and suggestion JSON contract is documented in `docs/openclaw-ledger-assistant-contract.md`. Its TypeScript definitions live in `src/lib/agents/assistant-contract.ts`, with reimbursement review fixture examples under `src/lib/agents/fixtures/`.
+
 ## Audit Requirements
 
 The proposal-only manifest does not write `audit_events` because it does not mutate finance data. Any later approval action that applies a proposal must write an audit event with:

@@ -1,0 +1,36 @@
+{
+  "contractVersion": "2026-05-12",
+  "contextId": "ctx-reimbursement-review-demo-20260512",
+  "generatedAt": "2026-05-12T16:00:05.000Z",
+  "model": "example-offline-assistant",
+  "suggestions": [
+    {
+      "approvalRequired": true,
+      "confidence": 0.88,
+      "id": "sug-match-alex-payment",
+      "rationale": "The incoming payment exactly matches Alex's expected split and arrived one day after the shared dinner.",
+      "relatedTransactionIds": [
+        "txn-dinner-shared",
+        "txn-alex-payment"
+      ],
+      "suggestedAction": {
+        "matchAmount": 59.36,
+        "receivedTransactionId": "txn-alex-payment",
+        "reimbursementRecordId": "reimb-alex-dinner"
+      },
+      "type": "reimbursement_match"
+    },
+    {
+      "approvalRequired": true,
+      "confidence": 0.72,
+      "id": "sug-clarify-future-shared-meals",
+      "question": "Should future Northstar Pizza charges near this amount default to shared dining until reviewed?",
+      "rationale": "The current transaction is already split, but the merchant may recur as shared spending.",
+      "relatedTransactionIds": [
+        "txn-dinner-shared"
+      ],
+      "type": "clarification_request"
+    }
+  ],
+  "summary": "Potential reimbursement match found. Ledger should show the proposed match for explicit user approval before changing reimbursement status."
+}

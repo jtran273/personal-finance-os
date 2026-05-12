@@ -30,7 +30,8 @@ Plaid API
 - `src/lib/db` owns typed database access and conversion from database rows to app records.
 - `src/lib/plaid` owns Plaid configuration, Link token creation, public token exchange, transaction sync, disconnect, token encryption, and safe error handling.
 - `src/lib/demo` owns local demo mode and seeded in-memory finance data.
-- `src/lib/review`, `src/lib/recurring`, `src/lib/finance`, and `src/lib/insights` own domain calculations.
+- `src/lib/agents` owns the proposal-only finance action manifest and derived agent inbox proposal shaping.
+- `src/lib/review`, `src/lib/recurring`, `src/lib/finance`, `src/lib/settings`, and `src/lib/insights` own domain calculations and setup-state helpers.
 - `supabase/migrations` owns schema, indexes, grants, RLS, and policies.
 
 ## Route Map
@@ -40,14 +41,14 @@ Plaid API
 | Route | Purpose | Data source |
 | --- | --- | --- |
 | `/login` | Supabase Auth sign-in and optional local demo entry | Supabase Auth server client |
-| `/dashboard` | Today dashboard, net worth, budget guardrails, insights, review nudges | Accounts, snapshots, transactions, review items, recurring rows, insights |
-| `/transactions` | Searchable/filterable transaction table | Accounts, categories, enriched transactions |
+| `/dashboard` | Balance dashboard, sync freshness, selected-period transaction activity, liabilities due, category trend/month spending views | Accounts, snapshots, transactions |
+| `/transactions` | Searchable/filterable transaction table, summary cards, merchant cleanup, CSV export link | Accounts, categories, enriched transactions |
 | `/transactions/[transactionId]` | Transaction edit surface | One enriched transaction plus categories |
-| `/agent-inbox` | Sanitized proposal inbox for finance-agent recommendations | Open review items and normalized review suggestions |
+| `/agent-inbox` | Sanitized proposal inbox derived from open review items and normalized review suggestions | Open review items and stored suggestions |
 | `/review` | Review queue and split workflow | Review items, categories, transactions |
 | `/recurring` | Recurring candidates and recurring rows | Transactions, recurring expenses |
 | `/accounts` | Accounts grouped by finance type | Accounts and balance snapshots |
-| `/settings` | Plaid connections, sync controls, provider status | Accounts, review items, recurring rows, transactions, Plaid connections |
+| `/settings` | Plaid bank connection controls and session access | Plaid connections |
 
 ### Route Handlers
 
@@ -63,7 +64,7 @@ Plaid API
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
 | `/login/logout` | `POST` | Sign out and clear demo cookie |
 
-Mutating route handlers use same-origin validation through `src/lib/security/request.ts`.
+Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. The scheduled Plaid sync route is the exception: it is intended for trusted server jobs and is authorized with `CRON_SECRET` instead of browser same-origin checks.
 
 ## Data Model
 
@@ -80,7 +81,7 @@ Core tables:
 - `categories`: user-owned categories.
 - `raw_transactions`: immutable Plaid transaction fields and raw payload.
 - `enriched_transactions`: editable app-facing merchant, category, intent, notes, review state, and confidence.
-- `review_items`: open/resolved/dismissed review tasks generated from heuristics and suggestions.
+- `review_items`: open/resolved/dismissed review tasks generated from heuristics and suggestions, including peer-to-peer, large, transfer-pair, new-recurring, low-confidence, missing-category, unclear-transfer, and recurring-candidate reasons.
 - `transaction_splits`: split allocations for peer-to-peer or shared spending.
 - `reimbursement_records`: expected/requested/received reimbursement tracking for reimbursable split portions.
 - `recurring_expenses`: confirmed, pending, paused, or dismissed recurring rows.
@@ -100,7 +101,7 @@ Every finance table includes `user_id`. RLS policies enforce user ownership.
 6. The access token is encrypted in `src/lib/plaid/token-vault.ts`.
 7. The app stores the encrypted token in `plaid_items.access_token_ciphertext`.
 8. Initial sync imports accounts, balances, raw transactions, enriched transactions, and generated review items.
-9. Future manual syncs use Plaid transaction cursors for idempotency.
+9. Future manual and scheduled syncs use Plaid transaction cursors for idempotency.
 
 The core sync service can run either all syncable items or a single item by database item id. Route handlers use that single-item path after Plaid Link update mode so repair and relink flows do not depend on browser-side transaction logic.
 
@@ -122,7 +123,7 @@ This split lets the app:
 - show raw Plaid context in the edit UI,
 - avoid treating unresolved activity as final budget truth.
 
-The `/transactions` surface supports explicit merchant cleanup for repeated label fixes. A user can match merchant/raw-name text, choose one saved category and intent, update matching enriched rows, and optionally persist a merchant rule so future Plaid imports receive the same app-facing category. The action records audit events and does not mutate raw Plaid rows.
+The `/transactions` surface supports explicit merchant cleanup for repeated label fixes. A user can match merchant/raw-name text, choose one saved category and intent, update matching enriched rows, and optionally persist a merchant rule so future Plaid imports receive the same app-facing category. The action records audit events and does not mutate raw Plaid rows. Transaction filters include search, month, date range, account, category, intent, review state, review reason, quality state, row limit, and transfer exclusion.
 
 ## Review Flow
 
@@ -136,27 +137,37 @@ Review items are created for transactions that need user attention, including:
 - missing categories,
 - recurring candidates.
 
-Users can accept suggestions individually or use a bulk accept flow for accept-ready AI suggestions. The bulk flow shows per-item current-versus-suggested previews and skip reasons, and the server rechecks eligibility before writing. Peer-to-peer items remain manual-only and require structured split allocation. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
+Review reason copy and ordering live in `src/lib/review/reasons.ts`; the Transactions page exposes the same reasons as filters so review-sensitive slices can be inspected and exported.
 
-Accepted AI cleanups can propose reusable merchant rules for future imports. Before the reviewer accepts one of those suggestions, `/review` runs the same deterministic merchant-pattern matcher against recent hydrated transactions and shows the likely impact: matched count, changed count, current-versus-proposed category/intent/recurring values, and open-review overlap. The simulator uses enriched transaction fields plus safe raw merchant/name labels; it does not render Plaid transaction ids, item ids, raw payloads, tokens, or provider request metadata.
+Users can accept ready suggestions individually, dismiss non-peer-to-peer review items, request one AI suggestion at a time, edit the enriched transaction inline, or resolve peer-to-peer items with structured split allocation. Peer-to-peer items remain manual-only and require an explanation before they leave the queue. Reimbursable portions and reimbursement records travel with hydrated transactions so review and reporting can distinguish owed-back dollars from owned spending without exposing raw provider payloads. Material changes write audit events.
+
+Accepted AI cleanups and review-page manual edits can upsert reusable merchant rules for future imports when the normalized merchant, category, and intent are specific enough. Rule creation writes audit events and still keeps raw Plaid rows immutable. The review page also auto-resolves stale `missing-category` review items when the enriched transaction already has an exact category match.
 
 ## Recurring Flow
 
-`src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Confirmed rows become part of dashboard and settings summaries.
+`src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Confirmed and pending rows feed the recurring page timeline; dashboard cashflow summaries remain future work.
 
-`src/lib/finance/cashflow.ts` also builds the upcoming cashflow calendar as a pure calculation. Confirmed and pending recurring rows produce scheduled bill events, while recurring posted positive transactions produce projected income events when their history has a deterministic cadence. The dashboard and `/recurring` display only app-owned merchant, amount, date, cadence, and account-derived cash totals; Plaid provider ids and raw payloads are not part of the timeline model.
+`src/lib/finance/cashflow.ts` also builds the upcoming cashflow calendar as a pure calculation. Confirmed and pending recurring rows produce scheduled bill events, while recurring posted positive transactions produce projected income events when their history has a deterministic cadence. `/recurring` displays only app-owned merchant, amount, date, cadence, and account-derived cash totals; Plaid provider ids and raw payloads are not part of the timeline model.
 
-## Budget Guardrails
+## Dashboard Calculations
 
-`src/lib/finance/budget-guardrails.ts` derives deterministic category guardrails from existing enriched transaction history. The dashboard compares current-month owned spending against the average of recent full months, projects the current pace through month end, and highlights categories that are near or over that baseline. The calculation reuses the spending helpers that exclude transfers and reimbursable split amounts, keeps unresolved review impact separate, and renders only app-facing category labels and transaction-filter links.
+`src/lib/finance/balances.ts` derives account totals, sync freshness, and balance trends from accounts, balance snapshots, and transaction history. The dashboard supports net worth, cash, liabilities, and cash-minus-liabilities views over 1-week, 1-month, 3-month, 6-month, 1-year, and all-time ranges. Selecting a point in the trend surfaces the related non-transfer transactions and links back to the transaction filters.
+
+`src/lib/finance/liabilities.ts` builds the liabilities-due panel from active credit accounts, cash balances, credit limits, and likely payment transactions. It estimates due dates from the last payment when available and highlights overdue or due-soon balances without relying on provider-sensitive ids.
+
+`src/lib/finance/spending.ts` powers category spending breakdowns, spending confidence, reimbursement-aware totals, and cleanup quality flags. The dashboard category panel can show cumulative category trends for the selected range or month-by-month category rows for the last six months. The separate `budget-guardrails.ts` helper remains available for deterministic guardrail summaries, but it is not the primary dashboard surface today.
 
 ## AI Suggestion Flow
 
 `src/lib/ai` defines a provider interface. The deterministic provider is the safe fallback. The OpenAI provider is optional and only runs when `OPENAI_API_KEY` is present on the server. Automatic OpenAI cleanup on Plaid import and review page load is disabled unless `ENABLE_OPENAI_AUTO_REVIEW=true`; manual review actions can still request one suggestion at a time.
 
-AI suggestions are advisory. They do not autonomously edit finance records.
+Manual AI suggestions are advisory and require explicit user acceptance. When `ENABLE_OPENAI_AUTO_REVIEW=true`, eligible high-confidence ordinary cleanup can be applied by server-side heuristics during import or review processing; peer-to-peer and ambiguous items remain manual.
 
-The agent inbox at `/agent-inbox` is a proposal-first surface over stored review suggestions. It renders minimized enriched transaction context plus safe Plaid labels, omitting raw Plaid payloads, provider ids, tokens, auth headers, service-role keys, and cursors. Approvals reuse the explicit review acceptance action so writes stay user-initiated and audit-backed.
+The proposal-only finance action manifest in `src/lib/agents/finance-action-manifest.ts` defines read summaries and draft-only proposal actions for agent handoffs. The agent inbox at `/agent-inbox` is a proposal-first surface over open review items and stored review suggestions. It renders minimized enriched transaction context plus safe Plaid labels, omitting raw Plaid payloads, provider ids, tokens, auth headers, service-role keys, and cursors. Approvals reuse the explicit review acceptance action so writes stay user-initiated and audit-backed; dismissals reuse the standard review dismissal path.
+
+## Settings Flow
+
+Settings is deliberately narrow. The route renders Plaid Link connection, sync, repair, and disconnect controls plus the session sign-out action. Category management, review decisions, recurring work, AI suggestions, and dashboard finance summaries live on their own workflow pages instead of in Settings. Setup-state helpers remain in `src/lib/settings` for tests and future onboarding surfaces.
 
 ## Caching And Rendering
 

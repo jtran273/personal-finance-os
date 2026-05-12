@@ -118,10 +118,6 @@ function formatSyncDate(value: string | null) {
   });
 }
 
-function formatEnvironment(environment: PlaidEnvironment) {
-  return environment === "production" ? "Production" : "Sandbox";
-}
-
 function getEnrichedTransactionCount(summary: SyncItemSummary) {
   return summary.enrichedTransactionsInserted + summary.enrichedTransactionsUpdated;
 }
@@ -188,7 +184,6 @@ export function PlaidConnectionPanel() {
   const router = useRouter();
   const [connections, setConnections] = useState<PlaidConnectionSummary[]>([]);
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
-  const [environment, setEnvironment] = useState<PlaidEnvironment>("sandbox");
   const [error, setError] = useState<string | null>(null);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const openedTokenRef = useRef<string | null>(null);
@@ -198,10 +193,6 @@ export function PlaidConnectionPanel() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [syncAttempt, setSyncAttempt] = useState<SyncAttemptState | null>(null);
 
-  const connectedInstitutionCount = useMemo(
-    () => new Set(connections.map((connection) => connection.institutionName)).size,
-    [connections]
-  );
   const syncableConnectionCount = useMemo(
     () => connections.filter((connection) => connection.status !== "revoked").length,
     [connections]
@@ -227,7 +218,6 @@ export function PlaidConnectionPanel() {
       .then((data) => {
         if (!ignore) {
           setConnections(data.connections);
-          setEnvironment(data.environment);
         }
       })
       .catch((loadError: unknown) => {
@@ -268,7 +258,6 @@ export function PlaidConnectionPanel() {
       );
 
       setConnections(data.connections);
-      setEnvironment(data.environment);
       const completedAt = new Date().toISOString();
       const message = formatPlaidSyncResultMessage(data.sync);
       const errorDetails = getPlaidSyncResultErrorDetails(data.sync);
@@ -436,14 +425,13 @@ export function PlaidConnectionPanel() {
 
   const isBusy = requestState === "loading" || requestState === "exchanging" || openRequested || Boolean(disconnectingId);
   const isSyncing = requestState === "syncing";
-  const environmentLabel = formatEnvironment(environment);
 
   return (
     <section className="settings-panel plaid-panel">
       <div className="settings-panel-head">
         <div>
           <div className="card-eyebrow">
-            <ShieldCheck size={13} /> Plaid {environmentLabel}
+            <ShieldCheck size={13} /> Plaid
           </div>
           <div className="settings-title">Bank connections</div>
         </div>
@@ -464,23 +452,9 @@ export function PlaidConnectionPanel() {
         </div>
       </div>
 
-      <div className="plaid-metrics">
-        <div className="setting-metric">
-          <div className="setting-metric-value">{environmentLabel}</div>
-          <div className="settings-row-sub">Environment</div>
-        </div>
-        <div className="setting-metric">
-          <div className="setting-metric-value">{statusSummary.syncable}</div>
-          <div className="settings-row-sub">Items</div>
-        </div>
-        <div className="setting-metric">
-          <div className="setting-metric-value">{connectedInstitutionCount}</div>
-          <div className="settings-row-sub">Institutions</div>
-        </div>
-        <div className="setting-metric">
-          <div className="setting-metric-value sync-date">{formatSyncDate(lastSyncAt)}</div>
-          <div className="settings-row-sub">Last successful sync</div>
-        </div>
+      <div className="plaid-sync-summary">
+        <span>Last successful sync</span>
+        <strong>{formatSyncDate(lastSyncAt)}</strong>
       </div>
 
       {syncAttempt ? (
@@ -491,13 +465,6 @@ export function PlaidConnectionPanel() {
             {syncAttempt.completedAt ? `; completed ${formatSyncDate(syncAttempt.completedAt)}` : ""}.
             {syncAttempt.errorDetails ? ` Latest API error: ${syncAttempt.errorDetails}` : ""}
           </span>
-        </div>
-      ) : null}
-
-      {environment === "production" ? (
-        <div className="plaid-alert warning">
-          <AlertTriangle size={14} />
-          <span>Production mode imports real account balances and transactions from connected institutions.</span>
         </div>
       ) : null}
 

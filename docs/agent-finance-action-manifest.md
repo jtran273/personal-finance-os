@@ -124,7 +124,7 @@ OpenClaw handoff payloads should use this envelope:
 }
 ```
 
-OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. If a future integration adds an apply endpoint, it must be separate from this manifest, same-origin protected, user scoped, audited, and named as an approval action rather than an agent action.
+OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. The current `/agent-inbox` UI derives proposals from open review items and stored review suggestions; a persistent generic proposal store is still future work. If a future integration adds an apply endpoint, it must be separate from this manifest, same-origin protected, user scoped, audited, and named as an approval action rather than an agent action.
 
 ## Audit Requirements
 

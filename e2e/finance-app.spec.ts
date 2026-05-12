@@ -5,6 +5,7 @@ const DEMO_COOKIE_NAME = "ledger_demo";
 const responsiveRoutes = [
   { path: "/dashboard", heading: "Dashboard" },
   { path: "/transactions", heading: "Transactions" },
+  { path: "/agent-inbox", heading: "Agent inbox" },
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
   { path: "/accounts", heading: "Accounts" },
@@ -42,6 +43,16 @@ async function expectNoPageOverflow(page: Page) {
   expect(Math.max(metrics.bodyScrollWidth, metrics.documentScrollWidth)).toBeLessThanOrEqual(metrics.clientWidth + 1);
 }
 
+async function expectNoSensitiveFinanceText(page: Page) {
+  const bodyText = await page.locator("body").innerText();
+
+  expect(bodyText).not.toMatch(/demo-token/i);
+  expect(bodyText).not.toMatch(/access_token/i);
+  expect(bodyText).not.toMatch(/SUPABASE_SERVICE_ROLE_KEY/i);
+  expect(bodyText).not.toMatch(/PLAID_(?:SECRET|CLIENT_ID)/i);
+  expect(bodyText).not.toMatch(/sk-[A-Za-z0-9]/);
+}
+
 test("demo login opens the seeded finance workspace", async ({ page }) => {
   await page.goto("/login");
 
@@ -51,6 +62,42 @@ test("demo login opens the seeded finance workspace", async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible();
+});
+
+test("app shell navigation and global search reach the primary workspace routes", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/dashboard");
+
+  const nav = page.getByRole("navigation", { name: "Main navigation" });
+  const routes = [
+    { heading: "Transactions", label: "Transactions" },
+    { heading: "Review queue", label: "Review" },
+    { heading: "Recurring", label: "Recurring" },
+    { heading: "Accounts", label: "Accounts" },
+    { heading: "Settings", label: "Settings" },
+    { heading: "Dashboard", label: "Dashboard" }
+  ] as const;
+
+  for (const route of routes) {
+    const link = nav.getByRole("link", { exact: true, name: route.label });
+    await link.click();
+    await expect(page.getByRole("heading", { exact: true, name: route.heading })).toBeVisible();
+    await expect(link).toHaveAttribute("aria-current", "page");
+    await expectNoSensitiveFinanceText(page);
+  }
+
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto("/dashboard");
+  await page.getByRole("button", { name: /open transaction search/i }).click();
+  const search = page.locator("#mobile-transaction-search input[name='q']");
+  await search.fill("Retail Wash");
+  await search.press("Enter");
+  await expect(page).toHaveURL(/\/transactions\?.*q=Retail\+Wash/);
+  await expect(search).toBeFocused();
+  await expect(page.getByRole("heading", { exact: true, name: "Transactions" })).toBeVisible();
+  await expect(page.getByText("Retail Wash").first()).toBeVisible();
+  await expectNoPageOverflow(page);
 });
 
 for (const route of responsiveRoutes) {
@@ -68,7 +115,7 @@ for (const route of responsiveRoutes) {
 
 test("dashboard trend range controls update the change-over-time view", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
-  await page.setViewportSize({ height: 844, width: 390 });
+  await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
   let chart = page.locator("svg[aria-label='Cash - liabilities balance trend']");
@@ -112,19 +159,30 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
   await expect(page.getByText("Selected period", { exact: true })).toBeVisible();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
+
+  const categoryMonthView = page.getByRole("button", { exact: true, name: "Month" });
+  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Month").getByRole("button").first()).toBeVisible();
+
+  const categoryTrendView = page.getByRole("button", { exact: true, name: "Trend" });
+  await categoryTrendView.click();
+  await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
   const categoryRange = page.getByLabel("Category trend range");
   await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");
   await categoryRange.getByRole("button", { exact: true, name: "3M" }).click();
   await expect(categoryRange.getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
-  const categoryMonthView = page.getByRole("button", { exact: true, name: "Month" });
   await categoryMonthView.click();
   await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Month").getByRole("button").first()).toBeVisible();
-  const categoryTrendView = page.getByRole("button", { exact: true, name: "Trend" });
   await categoryTrendView.click();
   await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
+
+  const incomePanel = page.getByLabel("Income by category");
+  await expect(incomePanel).toBeVisible();
+  await expect(incomePanel).toContainText("transfers excluded");
+  await expect(page.getByLabel("Income month").getByRole("button").first()).toBeVisible();
 
   const trendPoints = chart.locator("g[role='button']");
   const trendPointCount = await trendPoints.count();
@@ -141,6 +199,26 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.getByText("Transactions up to selected point")).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Clear point" }).click();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test("dashboard keeps the balance trend readable on mobile", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto("/dashboard");
+
+  const chart = page.locator("svg[aria-label='Cash - liabilities balance trend']");
+  await expect(chart).toBeVisible();
+  const chartBox = await chart.boundingBox();
+
+  expect(chartBox?.width).toBeGreaterThan(300);
+  expect(chartBox?.height).toBeGreaterThan(160);
+
+  const oneMonth = page.getByLabel("Balance trend range").getByRole("button", { exact: true, name: "1M" });
+  await oneMonth.click();
+  await expect(oneMonth).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Period change")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open transactions" }).first()).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -183,12 +261,158 @@ test("transaction search filters, topbar search, and CSV export stay aligned", a
   await expectNoPageOverflow(page);
 });
 
-test("settings reports AI provider status without exposing credentials", async ({ baseURL, context, page }) => {
+test("transaction filters, detail view, cleanup guardrail, and export safety work together", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/transactions");
+
+  const filterForm = page.locator("form[action='/transactions']");
+  await filterForm.locator("input[name='q']").fill("Retail Wash");
+  await filterForm.locator("select[name='review']").selectOption("open");
+  await filterForm.locator("select[name='reason']").selectOption("missing-category");
+  await filterForm.locator("select[name='quality']").selectOption("needs-cleanup");
+  await filterForm.locator("select[name='limit']").selectOption("100");
+  await filterForm.getByRole("button", { name: /apply/i }).click();
+
+  await expect(page).toHaveURL(/\/transactions\?.*q=Retail\+Wash/);
+  await expect(page).toHaveURL(/review=open/);
+  await expect(page).toHaveURL(/reason=missing-category/);
+  await expect(page).toHaveURL(/quality=needs-cleanup/);
+  const transactionTable = page.getByLabel("Persisted transactions");
+  await expect(transactionTable).toContainText("Retail Wash");
+  await expect(transactionTable).toContainText("Missing category");
+  await expect(transactionTable).toContainText("Uncategorized");
+
+  const filteredExport = await page.request.get("/api/export/transactions?q=Retail+Wash&review=open&reason=missing-category&quality=needs-cleanup");
+  expect(filteredExport.status()).toBe(200);
+  expect(filteredExport.headers()["cache-control"]).toContain("no-store");
+  const csv = await filteredExport.text();
+  expect(csv).toContain("Retail Wash");
+  expect(csv).not.toMatch(/demo-token|access_token|SUPABASE_SERVICE_ROLE_KEY|PLAID_SECRET|sk-[A-Za-z0-9]/i);
+
+  await page.getByLabel("Merchant cleanup").getByRole("button", { name: /apply cleanup/i }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /demo mode is read-only/i })).toBeVisible();
+
+  await filterForm.locator("input[name='from']").fill("2026-05-10");
+  await filterForm.locator("input[name='to']").fill("2026-05-01");
+  await filterForm.getByRole("button", { name: /apply/i }).click();
+  await expect(page.getByText(/selected date filters do not overlap/i)).toBeVisible();
+
+  await page.getByRole("link", { exact: true, name: /reset/i }).click();
+  await expect(page).toHaveURL(/\/transactions$/);
+  await page.goto("/transactions/t21");
+
+  await expect(page.getByRole("heading", { name: "OpenAI" })).toBeVisible();
+  await expect(page.getByLabel("Read-only transaction details")).toContainText("Raw Plaid merchant");
+  await expect(page.getByLabel("Read-only transaction details")).toContainText("Plaid transaction");
+  await expect(page.locator("input[name='merchantName']")).toHaveValue("OpenAI");
+  await expectNoSensitiveFinanceText(page);
+  await expectNoPageOverflow(page);
+});
+
+test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflows", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/review");
+
+  await expect(page.getByLabel("Review queue summary")).toContainText("Needs your input");
+  await expect(page.getByRole("heading", { name: /peer-to-peer/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /AI was uncertain/i })).toBeVisible();
+
+  const peerCard = page.locator("article", { has: page.getByRole("heading", { name: "Venmo - Maya R." }) });
+  await expect(peerCard).toContainText("Explain this peer-to-peer payment.");
+  await expect(peerCard.getByText("Fully allocated")).toBeVisible();
+  await expect(peerCard.getByRole("button", { name: /save and resolve/i })).toBeDisabled();
+  await peerCard.getByLabel("Explanation").fill("Dinner split with Maya");
+  await expect(peerCard.getByRole("button", { name: /save and resolve/i })).toBeEnabled();
+  await peerCard.getByRole("button", { name: /add split/i }).click();
+  await expect(peerCard.getByRole("button", { name: /remove split row 2/i })).toBeVisible();
+
+  const aiCard = page.locator("article", { has: page.getByRole("heading", { name: "Delta Air Lines" }) });
+  await expect(aiCard.getByRole("button", { name: /suggest with AI/i })).toBeVisible();
+  await expect(aiCard.getByRole("button", { name: /accept suggestion/i })).toBeVisible();
+  await expect(aiCard.getByRole("button", { name: /dismiss/i })).toBeVisible();
+  await aiCard.getByRole("button", { name: /edit here/i }).click();
+  await expect(aiCard.locator("input[name='merchantName']")).toHaveValue("Delta Air Lines");
+  await expect(aiCard.getByRole("button", { name: /save and finalize/i })).toBeVisible();
+  await aiCard.getByRole("button", { name: /cancel/i }).click();
+  await expect(aiCard.getByRole("button", { name: /edit here/i })).toBeVisible();
+
+  await expectNoSensitiveFinanceText(page);
+  await expectNoPageOverflow(page);
+});
+
+test("agent inbox keeps proposal context sanitized and links back to review and transaction detail", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/agent-inbox");
+
+  await expect(page.getByLabel("Agent inbox summary")).toContainText("Proposals");
+  await expect(page.getByLabel("Agent inbox safety")).toContainText("sanitized");
+  await expect(page.locator("article").first()).toBeVisible();
+  await expect(page.locator("article").first()).toContainText(/Accept ready|Needs review/);
+  await expectNoSensitiveFinanceText(page);
+
+  await page.locator("article").first().getByRole("link", { exact: true, name: "Review" }).click();
+  await expect(page).toHaveURL(/\/review#review-demo-review-/);
+  await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
+
+  await page.goto("/agent-inbox");
+  await page.getByRole("link", { name: "Open transaction" }).first().click();
+  await expect(page).toHaveURL(/\/transactions\/t\d+/);
+  await expect(page.getByLabel("Read-only transaction details")).toBeVisible();
+  await expectNoSensitiveFinanceText(page);
+});
+
+test("recurring and accounts pages render cashflow, account groups, and seeded finance rows", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+
+  await page.goto("/recurring");
+  await expect(page.getByLabel("Recurring summary")).toContainText("Tracked recurring");
+  await expect(page.getByLabel("Recurring summary")).toContainText("Monthly estimate");
+  await expect(page.getByRole("heading", { name: "Next 30 days" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recurring expenses" })).toBeVisible();
+  await expect(page.getByText("Equinox").first()).toBeVisible();
+  await expect(page.getByText("Substack").first()).toBeVisible();
+  await expectNoSensitiveFinanceText(page);
+  await expectNoPageOverflow(page);
+
+  await page.goto("/accounts");
+  await expect(page.getByLabel("Account summary")).toContainText("Net worth");
+  await expect(page.getByRole("heading", { name: "Cash" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Credit / liabilities" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Investments" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Retirement" })).toBeVisible();
+  await expect(page.getByText("Schools First Checking")).toBeVisible();
+  await expect(page.getByText("Chase Sapphire")).toBeVisible();
+  await expectNoSensitiveFinanceText(page);
+  await expectNoPageOverflow(page);
+});
+
+test("settings keeps bank connections and access controls simple", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/settings");
 
-  await expect(page.getByText("Suggestion status")).toBeVisible();
-  await expect(page.getByText(/OpenAI auto review|Manual AI ready|Fallback active/)).toBeVisible();
-  await expect(page.locator("body")).not.toContainText(/sk-[A-Za-z0-9]/);
+  await expect(page.getByText("Bank connections", { exact: true })).toBeVisible();
+  await expect(page.getByText("Last successful sync")).toBeVisible();
+  await expect(page.getByText("Schools First FCU")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Access" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+
+  await expect(page.getByText("Environment", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Items", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Institutions", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Production mode imports real account balances")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Setup checklist" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Personal Ledger" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Latest Plaid run" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Spending categories" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Saved category automation" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Suggestion status" })).toHaveCount(0);
+  await expect(page.getByText(/OpenAI auto review|Manual AI ready|Fallback active/)).toHaveCount(0);
+
+  await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });

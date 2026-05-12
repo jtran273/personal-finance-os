@@ -116,14 +116,14 @@ The encryption code can still decrypt legacy local tokens derived from Plaid cre
 
 ## Demo Mode
 
-Demo mode is intended for local development and screenshots.
+Demo mode is intended for local development, screenshots, smoke tests, and deliberate product walkthroughs. It serves seeded in-memory finance rows through the demo finance client, not real Supabase/Plaid rows.
 
-- Demo mode is enabled by default outside production.
-- Demo mode is disabled by default when `NODE_ENV=production` or `VERCEL_ENV=production`.
-- Set `ENABLE_DEMO_MODE=true` only for a deliberate non-sensitive demo deployment.
+- Demo mode is enabled by default unless `ENABLE_DEMO_MODE=false`.
+- Set `ENABLE_DEMO_MODE=false` on any production deployment where the demo entry should not appear.
+- Set `ENABLE_DEMO_MODE=true` or leave it unset only for a deliberate non-sensitive demo deployment.
 - Demo cookies are ignored when demo mode is disabled.
 
-Do not enable demo mode on the real production app that holds real financial data.
+The demo workspace does not expose real financial data, but the production choice should still be explicit because the login page will show a demo entry when demo mode is enabled.
 
 ## Cross-Origin Request Protection
 
@@ -137,6 +137,8 @@ Protected handlers include:
 - `/api/plaid/connections/[connectionId]`
 - `/login/demo`
 - `/login/logout`
+
+The scheduled sync route `/api/plaid/sync/scheduled` is the exception: it is intended for trusted server-to-server callers and requires `Authorization: Bearer <CRON_SECRET>`.
 
 The helper accepts the app origin, forwarded host origin, `NEXT_PUBLIC_APP_URL`, and `VERCEL_URL`. In production, requests without an `Origin` header are rejected.
 
@@ -163,7 +165,7 @@ Safe to log:
 - route context names,
 - high-level provider error codes,
 - counts of imported rows,
-- item ids or database ids when useful for debugging,
+- app-owned database ids when useful for debugging,
 - non-secret status values.
 
 Do not log:
@@ -174,13 +176,15 @@ Do not log:
 - raw auth headers,
 - full database URLs,
 - full Plaid payloads,
+- Plaid item, account, or transaction ids in user-visible logs or agent payloads,
 - full transaction notes unless explicitly needed for a support flow.
 
 ## Production Checklist
 
 - GitHub repo is private.
 - Vercel project environment variables are set for Production and Preview separately.
-- `ENABLE_DEMO_MODE` is unset or `false` in production.
+- `ENABLE_DEMO_MODE` is explicitly set for production: `false` to hide the demo entry, or `true`/unset only when a seeded product walkthrough is intentional.
+- `CRON_SECRET` is set before enabling scheduled sync and omitted when no scheduler is configured.
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.
 - `PLAID_REDIRECT_URI` is HTTPS and registered in Plaid.

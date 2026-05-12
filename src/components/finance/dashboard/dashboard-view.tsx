@@ -552,6 +552,26 @@ function TrendChart({
         </div>
       </div>
 
+      <div className={styles.mobileTrendSummary} aria-label="Mobile balance trend summary">
+        <div>
+          <span>{valueLabel}</span>
+          <strong>{formatMoney(hasSelectedPoint ? activePoint.netWorth : end.netWorth)}</strong>
+        </div>
+        <div className={styles.mobileTrendSummaryGrid}>
+          <div>
+            <span>{hasSelectedPoint ? "Selected" : "Range"}</span>
+            <strong>{hasSelectedPoint ? formatLongDate(activePoint.date) : `${formatDate(start.date)} - ${formatDate(end.date)}`}</strong>
+          </div>
+          <div>
+            <span>Change</span>
+            <strong className={hasSelectedPoint ? activeDeltaClass : deltaClassName}>
+              {hasSelectedPoint ? selectedPointDeltaLabel : selectedPeriodDeltaLabel}
+            </strong>
+          </div>
+        </div>
+        <Link className={styles.textLink} href={activityHref}>Open transactions</Link>
+      </div>
+
       <div className={styles.trend} ref={containerRef}>
         <svg aria-label={`${valueLabel} balance trend`} viewBox={`0 0 ${width} ${height}`}>
           <defs>
@@ -730,6 +750,25 @@ interface CategoryTrendSeries {
   total: number;
 }
 
+interface IncomeBreakdownRow {
+  amount: number;
+  count: number;
+  deltaAmount: number;
+  deltaPercent: number;
+  id: string | null;
+  label: string;
+  percent: number;
+  previousAmount: number;
+  sourceLabel: string;
+}
+
+interface IncomeBreakdownSummary {
+  fromDate: string;
+  rows: IncomeBreakdownRow[];
+  toDate: string;
+  totalAmount: number;
+}
+
 function formatPercentDelta(value: number) {
   if (!Number.isFinite(value)) return "0.0%";
   return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
@@ -749,6 +788,131 @@ function dateRange(fromDate: string, toDate: string) {
   }
 
   return dates.length > 0 ? dates : [toDate];
+}
+
+function monthBoundsForOffset(asOfDate: string, monthOffset: number) {
+  const date = parseIsoDate(`${asOfDate.slice(0, 7)}-01`);
+  const targetStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset, 1, 12));
+  const targetEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset + 1, 0, 12));
+  const previousStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset - 1, 1, 12));
+  const previousEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() - monthOffset, 0, 12));
+
+  return {
+    fromDate: isoDate(targetStart),
+    previousFrom: isoDate(previousStart),
+    previousTo: isoDate(previousEnd),
+    toDate: isoDate(targetEnd)
+  };
+}
+
+function dashboardTransactionIncomeAmount(transaction: DashboardBalanceTransaction) {
+  if (transaction.amount <= 0 || transaction.intent === "transfer") return 0;
+  return roundMoney(transaction.amount);
+}
+
+function percentDelta(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - previous) / Math.abs(previous)) * 1000) / 10;
+}
+
+function sourceSummary(sources: Map<string, { amount: number; count: number }>) {
+  const sorted = [...sources.entries()].sort(([, left], [, right]) => (
+    right.amount - left.amount || right.count - left.count
+  ));
+  const [topSource] = sorted[0] ?? ["Unknown source", { amount: 0, count: 0 }];
+
+  if (sorted.length <= 1) return topSource;
+  return `${topSource} + ${sorted.length - 1} more`;
+}
+
+function buildIncomeBreakdownForRange(
+  transactions: readonly DashboardBalanceTransaction[],
+  fromDate: string,
+  toDate: string,
+  previousFrom: string,
+  previousTo: string
+): IncomeBreakdownSummary {
+  const currentRows = new Map<string, {
+    amount: number;
+    count: number;
+    id: string | null;
+    label: string;
+    sources: Map<string, { amount: number; count: number }>;
+  }>();
+  const previousAmounts = new Map<string, number>();
+  let totalAmount = 0;
+
+  transactions.forEach((transaction) => {
+    if (transaction.date < previousFrom || transaction.date > toDate) return;
+
+    const amount = dashboardTransactionIncomeAmount(transaction);
+    if (amount <= 0) return;
+
+    const id = transaction.categoryId;
+    const label = transaction.category || "Other income";
+    const key = id ?? label;
+
+    if (transaction.date >= fromDate) {
+      const current = currentRows.get(key) ?? {
+        amount: 0,
+        count: 0,
+        id,
+        label,
+        sources: new Map<string, { amount: number; count: number }>()
+      };
+      const source = current.sources.get(transaction.merchant) ?? { amount: 0, count: 0 };
+
+      source.amount = roundMoney(source.amount + amount);
+      source.count += 1;
+      current.sources.set(transaction.merchant, source);
+      current.amount = roundMoney(current.amount + amount);
+      current.count += 1;
+      currentRows.set(key, current);
+      totalAmount = roundMoney(totalAmount + amount);
+    } else if (transaction.date >= previousFrom && transaction.date <= previousTo) {
+      previousAmounts.set(key, roundMoney((previousAmounts.get(key) ?? 0) + amount));
+    }
+  });
+
+  const rows = [...currentRows.values()].map((row) => {
+    const previousAmount = previousAmounts.get(row.id ?? row.label) ?? 0;
+    const deltaAmount = roundMoney(row.amount - previousAmount);
+
+    return {
+      amount: row.amount,
+      count: row.count,
+      deltaAmount,
+      deltaPercent: percentDelta(row.amount, previousAmount),
+      id: row.id,
+      label: row.label,
+      percent: totalAmount > 0 ? Math.round((row.amount / totalAmount) * 1000) / 10 : 0,
+      previousAmount,
+      sourceLabel: sourceSummary(row.sources)
+    };
+  }).sort((left, right) => right.amount - left.amount || left.label.localeCompare(right.label));
+
+  return { fromDate, rows, toDate, totalAmount };
+}
+
+function buildIncomeBreakdownsByMonth(
+  transactions: readonly DashboardBalanceTransaction[],
+  asOfDate: string,
+  monthCount = 6
+) {
+  const results: IncomeBreakdownSummary[] = [];
+
+  for (let offset = 0; offset < monthCount; offset += 1) {
+    const bounds = monthBoundsForOffset(asOfDate, offset);
+    results.push(buildIncomeBreakdownForRange(
+      transactions,
+      bounds.fromDate,
+      offset === 0 ? asOfDate : bounds.toDate,
+      bounds.previousFrom,
+      bounds.previousTo
+    ));
+  }
+
+  return results;
 }
 
 function categoryRangeBounds(
@@ -854,6 +1018,104 @@ function buildCategoryTrend(
   };
 }
 
+function IncomeByCategoryPanel({
+  asOfDate,
+  transactions
+}: {
+  asOfDate: string;
+  transactions: DashboardBalanceTransaction[];
+}) {
+  const [monthIndex, setMonthIndex] = useState(0);
+  const breakdowns = useMemo(
+    () => buildIncomeBreakdownsByMonth(transactions, asOfDate, 6),
+    [asOfDate, transactions]
+  );
+  const safeMonthIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
+  const breakdown = breakdowns[safeMonthIndex] ?? { fromDate: "", rows: [], toDate: "", totalAmount: 0 };
+  const maxAmount = breakdown.rows[0]?.amount ?? 0;
+  const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "Month";
+  const monthPeriodLabel = breakdown.fromDate
+    ? safeMonthIndex === 0
+      ? `${formatDate(breakdown.fromDate)} to ${formatDate(breakdown.toDate)} so far`
+      : `${formatDate(breakdown.fromDate)} to ${formatDate(breakdown.toDate)}`
+    : "No monthly period";
+  const subtitle = `${monthLabel} - ${monthPeriodLabel} - ${breakdown.rows.length} ${breakdown.rows.length === 1 ? "category" : "categories"} - transfers excluded`;
+
+  return (
+    <section aria-label="Income by category" className={styles.categoryPanel}>
+      <div className={styles.categoryPanelHead}>
+        <div className={styles.categoryHeadIdentity}>
+          <span className={styles.eyebrow}><Tags size={13} aria-hidden /> Income by category</span>
+          <h3 className={styles.categoryHeadline}>{formatMoney(breakdown.totalAmount)}</h3>
+          <p className={styles.categorySubtitle}>{subtitle}</p>
+        </div>
+        <Link
+          className={styles.textLink}
+          href={transactionsHref({ from: breakdown.fromDate, to: breakdown.toDate })}
+        >
+          Open transactions
+        </Link>
+      </div>
+
+      <div className={styles.categoryMonthPicker} aria-label="Income month">
+        {breakdowns.map((option, index) => (
+          <button
+            aria-pressed={index === safeMonthIndex}
+            className={`${styles.categoryMonthButton} ${index === safeMonthIndex ? styles.categoryMonthActive : ""}`}
+            key={option.fromDate || index}
+            onClick={() => setMonthIndex(index)}
+            type="button"
+          >
+            {option.fromDate ? formatMonthLabel(option.fromDate) : `M-${index}`}
+          </button>
+        ))}
+      </div>
+
+      {breakdown.rows.length === 0 ? (
+        <div className={styles.categoryEmpty}>No positive non-transfer income recorded for {monthLabel}.</div>
+      ) : (
+        <div className={styles.categoryRows}>
+          {breakdown.rows.map((row) => {
+            const widthPercent = maxAmount > 0 ? Math.max(2, (row.amount / maxAmount) * 100) : 0;
+            const deltaTone = row.deltaAmount > 0 ? styles.positive : row.deltaAmount < 0 ? styles.negative : undefined;
+            const deltaLabel = row.previousAmount > 0
+              ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
+              : "New this month";
+
+            return (
+              <Link
+                className={styles.categoryRow}
+                href={transactionsHref({
+                  category: row.id ?? undefined,
+                  from: breakdown.fromDate,
+                  q: row.id ? undefined : row.label,
+                  to: breakdown.toDate
+                })}
+                key={row.id ?? row.label}
+                title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
+              >
+                <div className={styles.categoryRowHead}>
+                  <strong>{row.label}</strong>
+                  <strong>{formatMoney(row.amount)}</strong>
+                </div>
+                <div className={styles.categoryRowBar} aria-hidden>
+                  <span style={{ width: `${widthPercent}%` }} />
+                </div>
+                <div className={styles.categoryRowMeta}>
+                  <span>
+                    {row.percent.toFixed(1)}% - {row.count} {row.count === 1 ? "transaction" : "transactions"} - {row.sourceLabel}
+                  </span>
+                  <span className={deltaTone}>{deltaLabel}</span>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function CategorySpendingPanel({
   asOfDate,
   breakdowns,
@@ -867,7 +1129,7 @@ function CategorySpendingPanel({
   setRangeKey: (key: TrendRangeKey) => void;
   transactions: DashboardBalanceTransaction[];
 }) {
-  const [viewMode, setViewMode] = useState<CategoryViewMode>("trend");
+  const [viewMode, setViewMode] = useState<CategoryViewMode>("month");
   const [monthIndex, setMonthIndex] = useState(0);
   const { fromDate, toDate } = useMemo(
     () => categoryRangeBounds(transactions, rangeKey, asOfDate),
@@ -1347,6 +1609,12 @@ export function DashboardView({
           breakdowns={categoryBreakdowns}
           rangeKey={categoryRangeKey}
           setRangeKey={setCategoryRangeKey}
+          transactions={balanceTransactions}
+        />
+      ) : null}
+      {accounts.length > 0 ? (
+        <IncomeByCategoryPanel
+          asOfDate={asOfDate}
           transactions={balanceTransactions}
         />
       ) : null}

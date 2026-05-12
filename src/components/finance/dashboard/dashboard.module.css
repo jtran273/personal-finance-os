@@ -300,6 +300,46 @@
   white-space: nowrap;
 }
 
+.mobileTrendSummary {
+  display: none;
+}
+
+.mobileTrendSummary span,
+.mobileTrendSummaryGrid span {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.mobileTrendSummary strong,
+.mobileTrendSummaryGrid strong {
+  display: block;
+  min-width: 0;
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.mobileTrendSummary > div:first-child strong {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 25px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.mobileTrendSummaryGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+  padding: 12px 0;
+}
+
 .trend {
   margin-top: 10px;
 }
@@ -554,12 +594,60 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .balanceViewButton {
+    min-height: 62px;
+    padding: 10px;
+  }
+
+  .balanceViewLabel {
+    font-size: 10px;
+  }
+
+  .balanceViewButton strong {
+    font-size: 13px;
+  }
+
+  .trendAxis,
+  .activityPanel {
+    display: none;
+  }
+
+  .chartInsight {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    margin-top: 12px;
+    padding: 12px;
+    background: var(--surface-2);
+  }
+
+  .chartInsight strong {
+    overflow: visible;
+    font-size: 14px;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .mobileTrendSummary {
+    display: none;
+  }
+
+  .trendControls {
+    width: 100%;
+  }
+
+  .trendControls button {
+    flex: 1 0 auto;
+  }
+
   .trend {
-    margin-inline: -4px;
+    margin: 12px 0 0;
   }
 
   .trend svg {
-    height: 176px;
+    height: 190px;
   }
 
   .trendScaleLabel,
@@ -580,6 +668,36 @@
 
   .trendAxis span:last-child {
     align-items: flex-start;
+    text-align: left;
+  }
+
+  .categoryPanel,
+  .liabilityPanel {
+    padding: 16px;
+  }
+
+  .categoryPanelHead,
+  .categoryPanelActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .categoryPanelActions,
+  .categoryModeControls,
+  .categoryRangeControls,
+  .categoryMonthPicker,
+  .categoryPanelActions .textLink {
+    width: 100%;
+  }
+
+  .categoryModeControls,
+  .categoryRangeControls,
+  .categoryMonthPicker {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .categoryPanelActions .textLink {
     text-align: left;
   }
 }

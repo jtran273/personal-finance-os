@@ -9,7 +9,6 @@ import {
   Repeat,
   Search,
   Settings,
-  Sparkles,
   X,
   type LucideIcon
 } from "lucide-react";
@@ -203,14 +202,6 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
 
         <div className="sidebar-foot">
-          <div className="ai-card">
-            <div className="ai-card-head">
-              <Sparkles size={14} aria-hidden />
-              <span>Cleanup tools</span>
-            </div>
-            <div className="ai-card-body">Fix repeated merchant labels from Transactions, then review the exceptions that still need judgment.</div>
-            <Link className="ai-card-link" href={`${routeHref.transactions}?quality=needs-cleanup`}>Open cleanup view</Link>
-          </div>
           <Link className="user-row" href={routeHref.settings}>
             <div className="avatar">J</div>
             <div className="user-meta">

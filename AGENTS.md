@@ -10,6 +10,17 @@ This repo handles personal finance data. Keep changes small, reviewable, and exp
 4. Update the relevant docs when routes, environment variables, setup steps, security behavior, data shape, or CI behavior change.
 5. Run the narrowest useful local checks, then broaden based on risk.
 
+## Parallel And Multi-Agent Work
+
+The user prefers Codex to lean toward parallelization when it will improve quality or speed. Treat this as standing permission to use subagents for complex, separable work.
+
+- Use subagents for independent codebase research, broad audits, large test-fix loops, repetitive migrations, or implementation slices with disjoint file ownership.
+- Before delegating, state the split briefly: what stays in the main session, what each subagent owns, and how results will be verified.
+- Do not delegate the immediate critical-path task if the main session is blocked on that answer; handle blocking work locally.
+- Keep delegated write scopes separate to avoid conflicts, and do not let agents revert unrelated user changes.
+- For simple, single-file, or tightly coupled tasks, stay in the main session.
+- Risky or shared-visible actions still require explicit confirmation: pushing, opening/closing PRs, force-pushes, destructive commands, production changes, or sending messages.
+
 ## Checks
 
 Use these commands when practical:

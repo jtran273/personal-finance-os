@@ -1,6 +1,14 @@
 export type AccountType = "depository" | "credit" | "investment" | "retirement";
 export type Intent = "personal" | "business" | "shared" | "reimbursable" | "transfer";
-export type ReviewReason = "venmo" | "large" | "transfer-pair" | "new-recurring" | "low-confidence";
+export type ReviewReason =
+  | "venmo"
+  | "large"
+  | "transfer-pair"
+  | "new-recurring"
+  | "low-confidence"
+  | "missing-category"
+  | "unclear-transfer"
+  | "recurring-candidate";
 export type RecurringStatus = "active" | "pending";
 
 export interface LedgerAccount {
@@ -218,7 +226,53 @@ export const ledgerData: LedgerData = (() => {
       confidence: 0.65,
       aiSuggested: { recurring: true, confidence: 0.78, reason: "Charged 2 months in a row at $8." }
     }),
-    txn("t40", 32, "Equinox", -260, "a5", "Health / Fitness", "personal", { recurring: true })
+    txn("t40", 32, "Equinox", -260, "a5", "Health / Fitness", "personal", { recurring: true }),
+    txn("t41", 6, "Retail Wash", -18.5, "a5", "Uncategorized", "personal", {
+      plaidCategory: "Service",
+      plaidMerchant: "RETAIL WASH IRVINE CA",
+      reviewReason: "missing-category",
+      confidence: 0.25,
+      aiSuggested: {
+        category: "Auto / Car Maintenance",
+        intent: "personal",
+        confidence: 0.72,
+        reason: "Car wash merchant needs confirmation before trusting the category."
+      }
+    }),
+    txn("t42", 13, "Retail Wash", -21, "a6", "Auto / Car Maintenance", "personal", {
+      plaidCategory: "Service",
+      plaidMerchant: "RETAIL WASH #102",
+      reviewReason: "low-confidence",
+      confidence: 0.65,
+      aiSuggested: {
+        category: "Auto / Car Maintenance",
+        intent: "personal",
+        confidence: 0.7,
+        reason: "Similar Retail Wash rows usually belong in car maintenance."
+      }
+    }),
+    txn("t43", 16, "ACH TRANSFER UNKNOWN", -350, "a1", "Transfer", "transfer", {
+      plaidCategory: "Transfer",
+      plaidMerchant: "ACH WEB TRANSFER",
+      reviewReason: "unclear-transfer",
+      confidence: 0.52,
+      aiSuggested: {
+        intent: "transfer",
+        confidence: 0.58,
+        reason: "Transfer wording is present, but there is no obvious matching account pair yet."
+      }
+    }),
+    txn("t44", 26, "Apple iCloud", -2.99, "a6", "Software / SaaS", "personal", {
+      plaidCategory: "Service",
+      plaidMerchant: "APPLE.COM/BILL ICLOUD",
+      reviewReason: "recurring-candidate",
+      confidence: 0.68,
+      aiSuggested: {
+        recurring: true,
+        confidence: 0.75,
+        reason: "Small repeat Apple charge looks like a subscription candidate."
+      }
+    })
   ];
 
   const rng = seededRandom(273);
@@ -241,12 +295,13 @@ export const ledgerData: LedgerData = (() => {
     ["Joe's Pizza", -16, "Food / Restaurants", "personal"],
     ["Lyft", -19, "Transport / Rideshare", "personal"],
     ["CVS Pharmacy", -22, "Health / Pharmacy", "personal"],
+    ["Retail Wash", -19, "Auto / Car Maintenance", "personal"],
     ["Brooklyn Bagel", -9, "Food / Restaurants", "personal"],
     ["PAYROLL DEPOSIT", 6850, "Income", "personal"],
     ["NYC Rent", -2400, "Housing", "personal"]
   ];
 
-  let nextId = 41;
+  let nextId = 45;
   for (let day = 35; day <= 360; day += 1) {
     if (rng() < 0.57) continue;
     const [merchant, base, category, intent] = merchants[Math.floor(rng() * merchants.length)];

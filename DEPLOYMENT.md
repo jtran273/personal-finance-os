@@ -55,7 +55,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
 | `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import and review page load should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
-| `ENABLE_DEMO_MODE` | Server only | Optional | Defaults to enabled. Set `false` to hide the seeded demo entry. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
+| `ENABLE_DEMO_MODE` | Server only | Production explicit | Defaults to enabled. Set `false` to hide the seeded demo entry, or set `true`/leave unset only for an intentional demo deployment. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
 | `CRON_SECRET` | Server only | Scheduled sync yes | Shared bearer secret for `/api/plaid/sync/scheduled`. Required before enabling Vercel Cron or another scheduler. |
 | `VERCEL_URL` | Server | Automatic | Used as a fallback app URL by Vercel deployments. |
 
@@ -91,7 +91,7 @@ npm run build
 ```
 
 5. Add environment variables for Preview and Production.
-6. Keep `ENABLE_DEMO_MODE` unset to show the seeded production demo, or set it to `false` to hide demo entry.
+6. Choose demo visibility intentionally: set `ENABLE_DEMO_MODE=false` to hide the seeded demo entry, or set `true`/leave unset only when the deployment should expose the seeded demo workspace.
 7. Deploy a Preview build.
 8. Verify login, app routes, Plaid settings, and CSV export.
 9. If scheduled sync is enabled, set `CRON_SECRET` and configure the scheduler to call `/api/plaid/sync/scheduled` with `Authorization: Bearer <CRON_SECRET>`.
@@ -134,28 +134,29 @@ To enable OpenAI suggestions:
 3. Leave `ENABLE_OPENAI_AUTO_REVIEW=false` or unset for manual-only token usage.
 4. Set `ENABLE_OPENAI_AUTO_REVIEW=true` only if automatic Plaid import and review page cleanup should call OpenAI.
 5. Deploy.
-6. Verify Settings shows OpenAI configured.
+6. Verify Review can request an OpenAI suggestion.
 
-OpenAI suggestions are advisory and do not write records autonomously.
+Manual OpenAI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup only runs when `ENABLE_OPENAI_AUTO_REVIEW=true` and only applies eligible high-confidence ordinary categorization under server-side rules.
 
 ## First Production Smoke Test
 
 1. Confirm GitHub repo is private.
 2. Confirm Vercel Production variables are present.
-3. Confirm the seeded demo entry appears on `/login`, unless intentionally disabled.
+3. Confirm the seeded demo entry visibility matches `ENABLE_DEMO_MODE`: `false` hides it; `true` or unset shows it.
 4. Visit `/login`.
 5. Sign in.
 6. Confirm `/dashboard` loads.
-7. Visit `/settings`.
-8. Confirm Plaid environment is correct.
-9. Connect one institution.
-10. Confirm accounts and transactions import.
-11. Run manual sync.
-12. Confirm no duplicates.
-13. Edit one transaction.
-14. Resolve one review item if present.
-15. Export CSV and inspect columns.
-16. Disconnect the Plaid item if this was only a smoke test.
+7. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render.
+8. Visit `/settings`.
+9. Confirm bank connection controls, last successful sync, and session access are correct.
+10. Connect one institution.
+11. Confirm accounts and transactions import.
+12. Run manual sync.
+13. Confirm no duplicates.
+14. Edit one transaction.
+15. Resolve one review item if present.
+16. Export CSV and inspect columns.
+17. Disconnect the Plaid item if this was only a smoke test.
 
 ## Security Headers
 
@@ -201,8 +202,11 @@ For a secret issue:
 
 ## Production Limitations
 
-- Background Plaid sync scheduling is not implemented yet. Sync is manual.
+- The scheduled Plaid sync route exists, but no scheduler is enabled unless Vercel Cron or another trusted runner is configured with `CRON_SECRET`.
 - The app is single-user from a product perspective, though rows are modeled by `user_id`.
-- AI suggestions are advisory.
+- Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible.
+- Bulk review acceptance is not implemented; review suggestions are accepted one item at a time.
+- The agent inbox is derived from review items and suggestions; it is not a persisted generic proposal store yet.
+- Reimbursement reporting exists, but automatic reimbursement matching and full reimbursement lifecycle management are not implemented yet.
 - Token encryption key rotation needs a planned migration or reconnect flow.
 - Full audit reporting UI is not implemented yet.

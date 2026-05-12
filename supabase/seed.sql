@@ -333,7 +333,11 @@ values
   ('t37', '50000000-0000-0000-0000-000000000037', '60000000-0000-0000-0000-000000000037', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-09', 'Cursor', -20.00, 'Software / AI Tools', 'business', 'Software / AI Tools', 'Cursor', 'posted', 0.9500, null, '{}'::jsonb, '', true),
   ('t38', '50000000-0000-0000-0000-000000000038', '60000000-0000-0000-0000-000000000038', null, '30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2026-04-08', 'PAYROLL DEPOSIT', 6850.00, 'Income', 'personal', 'Deposit', 'PAYROLL DEPOSIT', 'posted', 0.9500, null, '{}'::jsonb, '', true),
   ('t39', '50000000-0000-0000-0000-000000000039', '60000000-0000-0000-0000-000000000039', '70000000-0000-0000-0000-000000000039', '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-06', 'Substack', -8.00, 'Software / SaaS', 'personal', 'Software / SaaS', 'Substack', 'posted', 0.6500, 'new-recurring', '{"recurring":true,"confidence":0.78,"reason":"Charged 2 months in a row at $8."}'::jsonb, '', true),
-  ('t40', '50000000-0000-0000-0000-000000000040', '60000000-0000-0000-0000-000000000040', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-04', 'Equinox', -260.00, 'Health / Fitness', 'personal', 'Health / Fitness', 'Equinox', 'posted', 0.9500, null, '{}'::jsonb, '', true);
+  ('t40', '50000000-0000-0000-0000-000000000040', '60000000-0000-0000-0000-000000000040', null, '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-04', 'Equinox', -260.00, 'Health / Fitness', 'personal', 'Health / Fitness', 'Equinox', 'posted', 0.9500, null, '{}'::jsonb, '', true),
+  ('t41', '50000000-0000-0000-0000-000000000041', '60000000-0000-0000-0000-000000000041', '70000000-0000-0000-0000-000000000041', '30000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000004', '2026-04-30', 'Retail Wash', -18.50, 'Uncategorized', 'personal', 'Service', 'RETAIL WASH IRVINE CA', 'posted', 0.2500, 'missing-category', '{"category":"Auto / Car Maintenance","intent":"personal","confidence":0.72,"reason":"Car wash merchant needs confirmation before trusting the category."}'::jsonb, '', false),
+  ('t42', '50000000-0000-0000-0000-000000000042', '60000000-0000-0000-0000-000000000042', '70000000-0000-0000-0000-000000000042', '30000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000005', '2026-04-23', 'Retail Wash', -21.00, 'Auto / Car Maintenance', 'personal', 'Service', 'RETAIL WASH #102', 'posted', 0.6500, 'low-confidence', '{"category":"Auto / Car Maintenance","intent":"personal","confidence":0.70,"reason":"Similar Retail Wash rows usually belong in car maintenance."}'::jsonb, '', false),
+  ('t43', '50000000-0000-0000-0000-000000000043', '60000000-0000-0000-0000-000000000043', '70000000-0000-0000-0000-000000000043', '30000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', '2026-04-20', 'ACH TRANSFER UNKNOWN', -350.00, 'Transfer', 'transfer', 'Transfer', 'ACH WEB TRANSFER', 'posted', 0.5200, 'unclear-transfer', '{"intent":"transfer","confidence":0.58,"reason":"Transfer wording is present, but there is no obvious matching account pair yet."}'::jsonb, '', false),
+  ('t44', '50000000-0000-0000-0000-000000000044', '60000000-0000-0000-0000-000000000044', '70000000-0000-0000-0000-000000000044', '30000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000005', '2026-04-10', 'Apple iCloud', -2.99, 'Software / SaaS', 'personal', 'Service', 'APPLE.COM/BILL ICLOUD', 'posted', 0.6800, 'recurring-candidate', '{"recurring":true,"confidence":0.75,"reason":"Small repeat Apple charge looks like a subscription candidate."}'::jsonb, '', false);
 
 insert into public.raw_transactions (
   id,
@@ -444,6 +448,9 @@ select
     when 'large' then 'Larger than typical for this category. Confirm the label is right.'
     when 'transfer-pair' then 'Looks like a transfer between your accounts. Exclude from spending?'
     when 'new-recurring' then 'Charged more than once. Should Ledger track it as recurring?'
+    when 'missing-category' then 'Choose a real category before Ledger counts this transaction as trusted.'
+    when 'unclear-transfer' then 'Transfer-like wording is present, but the matching account pair is unclear.'
+    when 'recurring-candidate' then 'Looks repeatable. Confirm whether Ledger should track it as recurring.'
     else 'The suggestion is low confidence and needs a human check.'
   end,
   ai_suggestion,
@@ -580,7 +587,7 @@ insert into public.audit_events (
   metadata
 )
 values
-  ('c0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'seed', null, 'ledger_seed_loaded', null, null, '{"accounts":9,"transactions":40,"review_items":8,"recurring_expenses":11}'::jsonb, '{"source":"supabase/seed.sql","base_date":"2026-05-06"}'::jsonb)
+  ('c0000000-0000-0000-0000-000000000001', '11111111-1111-1111-1111-111111111111', 'seed', null, 'ledger_seed_loaded', null, null, '{"accounts":9,"transactions":44,"review_items":12,"recurring_expenses":11}'::jsonb, '{"source":"supabase/seed.sql","base_date":"2026-05-06"}'::jsonb)
 on conflict (id) do update set
   after_data = excluded.after_data,
   metadata = excluded.metadata;

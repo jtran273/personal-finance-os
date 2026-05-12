@@ -100,27 +100,27 @@ gh repo edit jtran273/personal-finance-os --visibility private
 After a Vercel deployment:
 
 1. Open `/login`.
-2. Confirm the demo button is not visible in production.
+2. Confirm the demo button visibility matches the intended `ENABLE_DEMO_MODE` setting: `false` hides it; `true` or unset shows the seeded demo entry. Production should choose this explicitly.
 3. Sign in with Supabase Auth.
 4. Confirm `/dashboard` loads.
 5. Confirm `/transactions`, `/review`, `/recurring`, `/accounts`, and `/settings` load.
-6. Confirm the dashboard and `/recurring` show the next-30-day cashflow calendar using safe merchant/date/amount fields only.
-7. Confirm Settings shows the intended Plaid environment.
-8. Run a manual Plaid sync only after confirming the environment.
-9. Export a CSV from `/transactions` and confirm no secrets are present.
-10. Check browser devtools for blocked CSP resources.
-11. Check Vercel logs for safe, non-secret errors only.
+6. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render without page overflow.
+7. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.
+8. Confirm Settings shows bank connection controls, last successful sync, repair actions when applicable, and session access.
+9. Run a manual Plaid sync only after confirming the environment.
+10. Export a CSV from `/transactions` and confirm no secrets are present.
+11. Check browser devtools for blocked CSP resources.
+12. Check Vercel logs for safe, non-secret errors only.
 
 ## Plaid Connection Check
 
-Use `/settings`.
+Use `/settings` for connection health, sync status, repair actions, and disconnect controls. Confirm the intended Plaid environment in Vercel environment variables and the Plaid dashboard; Settings does not display the environment.
 
 Expected healthy state:
 
-- Plaid environment label matches the deployment.
+- Plaid credentials and environment match the deployment configuration.
 - Connected institution appears once.
 - Last successful sync is present after sync.
-- Latest sync run in Settings shows source, final status, item success/failure counts, and changed-row counts.
 - Accounts import with balances.
 - Transactions import without duplicates.
 - Revoked items remain visible as revoked and do not sync again.
@@ -189,19 +189,25 @@ If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the i
 
 ### Scheduled sync wiring
 
-Scheduled sync should call the same server-only path as manual sync:
+Scheduled sync uses a dedicated server-only route:
 
 ```text
-POST /api/plaid/sync
+GET or POST /api/plaid/sync/scheduled
 ```
 
-Recommended production wiring is a Vercel Cron or another trusted scheduler that sends a same-origin request with the app session or a future dedicated server-to-server auth layer. Keep scheduled jobs server-only: never expose Plaid access tokens, service-role keys, transaction cursors, auth headers, or raw provider payloads to the browser or job logs.
+Recommended production wiring is a Vercel Cron or another trusted scheduler that sends:
 
-For a first scheduled-sync implementation:
+```text
+Authorization: Bearer <CRON_SECRET>
+```
 
-1. Reuse `syncPlaidConnections` for all syncable items.
-2. Reuse `syncPlaidItem` for targeted retries or repair follow-up.
-3. Persist only safe item state already supported by `plaid_items`: `status`, `error_code`, generic `error_message`, `last_successful_sync_at`, and `transaction_cursor`.
+This route does not use browser same-origin auth. Keep scheduled jobs server-only: never expose Plaid access tokens, service-role keys, transaction cursors, auth headers, provider ids, or raw provider payloads to the browser or job logs.
+
+For scheduled-sync maintenance:
+
+1. Confirm `CRON_SECRET` is set in the server environment before enabling the scheduler.
+2. Confirm the route returns a summary with safe item counts and sanitized error metadata.
+3. Confirm the route response and server logs show only safe scheduled-run status, counts, and sanitized error metadata.
 4. Log only safe Plaid metadata from `getSafePlaidError`.
 5. Add alerting on failed item count, not provider-sensitive identifiers.
 
@@ -228,7 +234,7 @@ Configure `CRON_SECRET` as a server-only environment variable before enabling a 
 Authorization: Bearer <CRON_SECRET>
 ```
 
-The route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. Logs and JSON responses must stay limited to safe status, counts, and sanitized Plaid error metadata.
+The route uses the Supabase service-role client, finds users with non-revoked Plaid items, and writes the same persisted sync run summaries as manual sync. Logs and JSON responses must stay limited to safe status, app-owned ids, counts, and sanitized Plaid error metadata.
 
 ## Supabase Troubleshooting
 
@@ -270,7 +276,7 @@ Expected:
 
 - requires a signed-in user or demo mode,
 - returns `Cache-Control: no-store`,
-- includes enriched labels and raw Plaid context,
+- includes enriched labels, review/filter context, reimbursement summaries, and safe raw Plaid context,
 - excludes Plaid access tokens, service role keys, auth headers, and provider secrets.
 
 ## AI Provider Checks
@@ -279,11 +285,12 @@ The app works without `OPENAI_API_KEY` by using deterministic suggestions.
 
 If `OPENAI_API_KEY` is set:
 
-- provider status in Settings should show OpenAI is configured,
+- OpenAI review actions should use the configured provider,
 - automatic OpenAI cleanup should stay off unless `ENABLE_OPENAI_AUTO_REVIEW=true`,
 - the review queue should let the user generate individual suggestions manually,
 - suggestions should remain advisory,
 - no AI provider should perform autonomous writes,
+- accepted suggestions and merchant rules should still require explicit user actions,
 - raw provider secrets must stay server-only.
 
 ## Database Maintenance

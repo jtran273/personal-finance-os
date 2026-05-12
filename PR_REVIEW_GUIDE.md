@@ -2,6 +2,8 @@
 
 Generated: 2026-05-06 23:55 PT
 
+Status: historical integration audit. This file is kept for context about the Grace overnight branches available on May 6, 2026. It is not the current PR review process or active roadmap; use `README.md`, `OPERATIONS.md`, and `ROADMAP.md` for current repo guidance.
+
 Scope: integration audit for open Grace overnight PRs requested as #20, #21, #22, #23, #24, #38, and #39.
 
 ## Access Notes
@@ -125,4 +127,3 @@ Conflict risk by file overlap:
 - `git merge-tree` pairwise checks across the seven local refs
 
 No application tests were run for the branch PRs because this task was an integration audit and the code PRs were not merged locally. After this guide was added, only docs-oriented validation is needed for this audit branch.
-

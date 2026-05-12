@@ -78,24 +78,30 @@ const dayLabel = (iso: string) => {
 
 const reasonLabel = (reason: ReviewReason | null) => {
   if (!reason) return "Review";
-  return {
+  return ({
     venmo: "Peer-to-peer",
     large: "Large",
     "transfer-pair": "Transfer?",
     "new-recurring": "New recurring?",
-    "low-confidence": "Unsure"
-  }[reason];
+    "low-confidence": "Unsure",
+    "missing-category": "Missing category",
+    "unclear-transfer": "Unclear transfer",
+    "recurring-candidate": "Recurring?"
+  } satisfies Record<ReviewReason, string>)[reason];
 };
 
 const reasonExplanation = (reason: ReviewReason | null) => {
   if (!reason) return "Needs review";
-  return {
+  return ({
     venmo: "Peer-to-peer payment. Ledger needs to know what this was actually for.",
     large: "Larger than typical for this category. Confirm the label is right.",
     "transfer-pair": "Looks like a transfer between your accounts. Exclude from spending?",
     "new-recurring": "Charged more than once. Should Ledger track it as recurring?",
-    "low-confidence": "The suggestion is low confidence and needs a human check."
-  }[reason];
+    "low-confidence": "The suggestion is low confidence and needs a human check.",
+    "missing-category": "Choose a real category before Ledger counts this transaction as trusted.",
+    "unclear-transfer": "Transfer-like wording is present, but the matching account pair is unclear.",
+    "recurring-candidate": "Looks repeatable. Confirm whether Ledger should track it as recurring."
+  } satisfies Record<ReviewReason, string>)[reason];
 };
 
 export function LedgerProvider({ children }: { children: ReactNode }) {

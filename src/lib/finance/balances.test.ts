@@ -143,3 +143,27 @@ test("buildBalanceTrend uses transaction history when snapshots are too sparse",
   assert.equal(trend.at(-1)?.date, "2026-04-30");
   assert.equal(trend.at(-1)?.netWorth, 1000);
 });
+
+test("buildBalanceTrend derives transaction trends for liabilities and cashMinusLiabilities", () => {
+  const txns = [
+    { amount: -120, date: "2026-04-10", id: "card-charge", intent: "personal" as const, status: "posted" as const, accountId: creditAccount.id },
+    { amount: -45, date: "2026-04-15", id: "cash-spend", intent: "personal" as const, status: "posted" as const, accountId: account.id },
+    { amount: -500, date: "2026-04-20", id: "transfer-payment", intent: "transfer" as const, status: "posted" as const, accountId: creditAccount.id }
+  ];
+
+  const liabilitiesTrend = buildBalanceTrend([account, creditAccount], [], {
+    asOfDate: "2026-04-30",
+    scope: "liabilities",
+    transactions: txns
+  });
+  assert.equal(liabilitiesTrend.length > 1, true, "liabilities scope should derive multiple trend points from credit transactions");
+  assert.equal(liabilitiesTrend.at(-1)?.netWorth, 350, "trend should end at current liabilities total");
+
+  const combinedTrend = buildBalanceTrend([account, creditAccount], [], {
+    asOfDate: "2026-04-30",
+    scope: "cashMinusLiabilities",
+    transactions: txns
+  });
+  assert.equal(combinedTrend.length > 1, true, "cashMinusLiabilities should derive multiple trend points");
+  assert.equal(combinedTrend.at(-1)?.netWorth, 650, "trend should end at current cash minus liabilities");
+});

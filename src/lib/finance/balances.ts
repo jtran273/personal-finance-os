@@ -256,21 +256,40 @@ function buildTransactionDerivedTrend(
   transactions: readonly BalanceTrendTransaction[],
   options: { asOfDate: string; lookbackDays: number; maxPoints: number; scope: BalanceTrendScope }
 ) {
-  if (options.scope !== "netWorth" && options.scope !== "cash") return [];
-
   const currentNetWorth = calculateAccountScopeTotal(accounts, options.scope);
   const cutoffDate = addDays(options.asOfDate, -options.lookbackDays);
   const deltasByDate = new Map<string, number>();
-  const accountIds = new Set(accounts.map((account) => account.id));
+  const accountTypeById = new Map(accounts.map((account) => [account.id, account.type]));
 
   transactions.forEach((transaction) => {
     if (transaction.status === "pending" || transaction.intent === "transfer") return;
     if (transaction.date < cutoffDate || transaction.date > options.asOfDate) return;
-    if (options.scope === "cash" && (!transaction.accountId || !accountIds.has(transaction.accountId))) return;
 
+    const accountType = transaction.accountId ? accountTypeById.get(transaction.accountId) : undefined;
+    let delta = 0;
+
+    if (options.scope === "netWorth") {
+      // All accounts contribute with normal sign. Missing accountId still
+      // counts (preserves legacy behavior where transactions without an
+      // account just contribute to net worth).
+      delta = transaction.amount;
+    } else if (options.scope === "cash") {
+      if (accountType !== "depository") return;
+      delta = transaction.amount;
+    } else if (options.scope === "liabilities") {
+      if (accountType !== "credit") return;
+      // Liabilities are a positive "amount owed"; a charge (negative
+      // transaction amount) makes you owe more.
+      delta = -transaction.amount;
+    } else if (options.scope === "cashMinusLiabilities") {
+      if (accountType !== "depository" && accountType !== "credit") return;
+      delta = transaction.amount;
+    }
+
+    if (delta === 0) return;
     deltasByDate.set(
       transaction.date,
-      (deltasByDate.get(transaction.date) ?? 0) + transaction.amount
+      (deltasByDate.get(transaction.date) ?? 0) + delta
     );
   });
 

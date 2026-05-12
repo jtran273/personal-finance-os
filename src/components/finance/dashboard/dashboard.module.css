@@ -226,12 +226,24 @@
 .trendControls button:hover,
 .trendControls button:focus-visible,
 .activityModeControls button:hover,
-.activityModeControls button:focus-visible,
-.trendRangeActive,
-.activityModeActive {
+.activityModeControls button:focus-visible {
   background: var(--surface);
   color: var(--ink);
   outline: none;
+}
+
+.trendRangeActive,
+.activityModeActive {
+  background: var(--ink);
+  color: var(--bg);
+  font-weight: 600;
+  outline: none;
+}
+
+.trendRangeActive:hover,
+.activityModeActive:hover {
+  background: var(--ink);
+  color: var(--bg);
 }
 
 .trendSummary {

@@ -51,7 +51,7 @@ interface DashboardViewProps {
   totals: AccountBalanceTotals;
 }
 
-type TrendRangeKey = "1M" | "3M" | "6M" | "1Y" | "ALL";
+type TrendRangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 type ActivityMode = "change" | "through";
 
 interface BalanceViewOption {
@@ -91,6 +91,7 @@ const longDateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 const trendRangeOptions: { days: number | null; key: TrendRangeKey; label: string }[] = [
+  { days: 7, key: "1W", label: "1W" },
   { days: 31, key: "1M", label: "1M" },
   { days: 93, key: "3M", label: "3M" },
   { days: 186, key: "6M", label: "6M" },

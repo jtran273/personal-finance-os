@@ -112,7 +112,12 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const trendPointCount = await trendPoints.count();
   expect(trendPointCount).toBeGreaterThan(1);
   await trendPoints.nth(Math.min(1, trendPointCount - 1)).click();
-  await expect(page.getByText("Point change")).toBeVisible();
+  await expect(page.getByLabel("Selected balance transactions")).toBeVisible();
+  await expect(page.getByRole("button", { exact: true, name: "Point change" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Moved this point")).toBeVisible();
+  await page.getByRole("button", { exact: true, name: "Up to date" }).click();
+  await expect(page.getByRole("button", { exact: true, name: "Up to date" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText("Up to selected date")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 

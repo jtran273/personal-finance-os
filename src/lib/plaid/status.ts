@@ -58,6 +58,12 @@ const WAIT_ERROR_CODES = new Set([
   "INSTITUTION_NOT_AVAILABLE"
 ]);
 
+const SERVER_CONFIGURATION_ERROR_CODES = new Set([
+  "PLAID_CONFIGURATION_ERROR",
+  "PLAID_ROUTE_CONFIGURATION_ERROR",
+  "PLAID_TOKEN_DECRYPTION_ERROR"
+]);
+
 function normalizedCode(code: string | null) {
   return code?.trim().toUpperCase() ?? null;
 }
@@ -94,6 +100,14 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
       action: "wait",
       detail: "Plaid has not finished making transaction data available. Retry sync later.",
       title: "Transactions pending"
+    };
+  }
+
+  if (code && SERVER_CONFIGURATION_ERROR_CODES.has(code)) {
+    return {
+      action: "retry",
+      detail: "Plaid server configuration needs attention before sync can run. Check production environment variables and retry sync.",
+      title: "Server configuration issue"
     };
   }
 

@@ -4,6 +4,13 @@ import { getPlaidCredentialConfig, PlaidConfigurationError } from "./config";
 const TOKEN_VERSION = "v1";
 const TOKEN_ALGORITHM = "aes-256-gcm";
 
+export class PlaidTokenDecryptionError extends Error {
+  constructor() {
+    super("Unable to decrypt Plaid access token.");
+    this.name = "PlaidTokenDecryptionError";
+  }
+}
+
 function isProductionRuntime() {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
 }
@@ -24,11 +31,19 @@ function getLegacyTokenKey() {
   );
 }
 
-function getPrimaryTokenKey() {
+function getExplicitTokenKey() {
   const explicitKey = process.env.PLAID_TOKEN_ENCRYPTION_KEY?.trim();
 
+  return explicitKey
+    ? hashKey("personal-finance-os:plaid-access-token:explicit:v1", explicitKey)
+    : null;
+}
+
+function getPrimaryTokenKey() {
+  const explicitKey = getExplicitTokenKey();
+
   if (explicitKey) {
-    return hashKey("personal-finance-os:plaid-access-token:explicit:v1", explicitKey);
+    return explicitKey;
   }
 
   if (isProductionRuntime()) {
@@ -38,11 +53,13 @@ function getPrimaryTokenKey() {
   return getLegacyTokenKey();
 }
 
-function getDecryptionKeyCandidates() {
-  return [
-    getPrimaryTokenKey,
-    getLegacyTokenKey
-  ];
+function getDecryptionKeys() {
+  const primary = getExplicitTokenKey();
+  const legacy = getLegacyTokenKey();
+
+  if (!primary) return [legacy];
+
+  return primary.equals(legacy) ? [primary] : [primary, legacy];
 }
 
 function encode(value: Buffer) {
@@ -69,19 +86,16 @@ export function decryptPlaidAccessToken(ciphertext: string) {
     throw new Error("Unsupported Plaid access token ciphertext.");
   }
 
-  let lastError: unknown;
-
-  for (const getKey of getDecryptionKeyCandidates()) {
+  for (const key of getDecryptionKeys()) {
     try {
-      const key = getKey();
       const decipher = createDecipheriv(TOKEN_ALGORITHM, key, decode(iv));
       decipher.setAuthTag(decode(tag));
 
       return Buffer.concat([decipher.update(decode(encrypted)), decipher.final()]).toString("utf8");
-    } catch (error) {
-      lastError = error;
+    } catch {
+      // Try the next known key. Production can read legacy ciphertext after key rotation.
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Unable to decrypt Plaid access token.");
+  throw new PlaidTokenDecryptionError();
 }

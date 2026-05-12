@@ -35,7 +35,7 @@ import { evaluateAutoCategorization } from "../review/auto-categorization";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildTransactionReviewItems } from "../review/heuristics";
 import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
-import { getPlaidConfig } from "./config";
+import { getPlaidLinkTokenConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
 import { getPlaidConnectionIssue, type PlaidConnectionIssue } from "./status";
@@ -1974,7 +1974,7 @@ export async function createPlaidLinkToken({
   userEmail: string | null;
   userId: string;
 }): Promise<PlaidLinkTokenResult> {
-  const config = getPlaidConfig();
+  const config = getPlaidLinkTokenConfig();
   const plaid = getPlaidClient();
   if (itemId && !client) {
     throw new Error("Plaid update mode requires a write client.");

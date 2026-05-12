@@ -21,7 +21,8 @@ export async function POST(request: NextRequest) {
   }
 
   const formData = await request.formData();
-  const redirectUrl = new URL(normalizeRedirectPath(formData.get("redirectTo")), request.url);
+  const redirectOrigin = request.headers.get("origin") ?? request.nextUrl.origin;
+  const redirectUrl = new URL(normalizeRedirectPath(formData.get("redirectTo")), redirectOrigin);
   const response = NextResponse.redirect(redirectUrl, { status: 303 });
 
   setDemoCookie(response);

@@ -64,6 +64,8 @@ Generate `PLAID_TOKEN_ENCRYPTION_KEY`:
 openssl rand -base64 32
 ```
 
+Existing Plaid access tokens may have been encrypted with the legacy Plaid-derived key. The app can still decrypt those legacy tokens for sync, but production encryption for new connections requires `PLAID_TOKEN_ENCRYPTION_KEY`. Do not rotate Plaid secrets or the explicit token key without confirming existing items still sync.
+
 ## Supabase Setup
 
 1. Create or select a Supabase project.

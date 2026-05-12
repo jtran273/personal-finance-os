@@ -37,6 +37,22 @@ test("Plaid connection issues use safe repair copy for common item errors", () =
   );
 });
 
+test("Plaid server configuration errors use actionable safe copy", () => {
+  assert.deepEqual(
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_CONFIGURATION_ERROR", status: "error" })),
+    {
+      action: "retry",
+      detail: "Plaid server configuration needs attention before sync can run. Check production environment variables and retry sync.",
+      title: "Server configuration issue"
+    }
+  );
+
+  assert.equal(
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_TOKEN_DECRYPTION_ERROR", status: "error" }))?.title,
+    "Server configuration issue"
+  );
+});
+
 test("Plaid connection summary derives latest sync and repair counts without provider identifiers", () => {
   const summary = buildPlaidConnectionsStatusSummary([
     connection({ lastSuccessfulSyncAt: "2026-05-06T12:00:00.000Z" }),

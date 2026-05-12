@@ -1,4 +1,5 @@
 import { PlaidConfigurationError } from "./config";
+import { PlaidTokenDecryptionError } from "./token-vault";
 
 export class PlaidRouteConfigurationError extends Error {
   constructor(message = "Plaid route is not configured.") {
@@ -29,6 +30,10 @@ export function getSafePlaidError(error: unknown): SafePlaidError {
 
   if (error instanceof PlaidRouteConfigurationError) {
     return { code: "PLAID_ROUTE_CONFIGURATION_ERROR" };
+  }
+
+  if (error instanceof PlaidTokenDecryptionError) {
+    return { code: "PLAID_TOKEN_DECRYPTION_ERROR" };
   }
 
   const response = isRecord(error) && isRecord(error.response) ? error.response : null;

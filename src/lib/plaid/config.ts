@@ -88,9 +88,15 @@ export function getPlaidConfig(): PlaidConfig {
   const credentialConfig = getPlaidCredentialConfig();
   const redirectUri = buildRedirectUri();
 
-  if (credentialConfig.environment === "production") {
-    assertProductionRedirectUri(redirectUri);
+  return { ...credentialConfig, redirectUri };
+}
+
+export function getPlaidLinkTokenConfig(): PlaidConfig {
+  const config = getPlaidConfig();
+
+  if (config.environment === "production") {
+    assertProductionRedirectUri(config.redirectUri);
   }
 
-  return { ...credentialConfig, redirectUri };
+  return config;
 }

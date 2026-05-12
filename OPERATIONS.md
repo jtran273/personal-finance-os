@@ -165,10 +165,12 @@ If Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT
 
 Check:
 
+- production Supabase has `plaid_sync_runs` and `plaid_sync_run_items`,
 - `PLAID_CLIENT_ID` is set,
 - `PLAID_ENV` matches the Plaid app/environment that created the stored access tokens,
 - the selected scoped secret is present (`PLAID_PRODUCTION_SECRET` for production or `PLAID_SANDBOX_SECRET` for sandbox),
-- `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production.
+- existing legacy-encrypted access tokens can still decrypt after Plaid secret changes,
+- `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production before adding new production connections.
 
 Manual and scheduled sync do not need Plaid Link redirect configuration, but Link token creation still does. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately.
 

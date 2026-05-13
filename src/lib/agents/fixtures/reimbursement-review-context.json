@@ -1,0 +1,116 @@
+{
+  "contractVersion": "2026-05-12",
+  "contextId": "ctx-reimbursement-review-demo-20260512",
+  "contextKind": "reimbursement_review",
+  "generatedAt": "2026-05-12T16:00:00.000Z",
+  "ledgerRole": "system_of_record",
+  "openClawRole": "reasoning_layer",
+  "records": [
+    {
+      "account": {
+        "displayName": "Everyday Checking",
+        "institutionName": "Demo Bank",
+        "mask": "4321"
+      },
+      "amount": -118.72,
+      "category": "Dining",
+      "categoryId": "cat-dining",
+      "confidence": 0.68,
+      "date": "2026-05-10",
+      "id": "txn-dinner-shared",
+      "intent": "shared",
+      "merchant": "Northstar Pizza",
+      "reimbursements": [
+        {
+          "counterparty": "Alex",
+          "dueDate": "2026-05-17",
+          "expectedAmount": 59.36,
+          "id": "reimb-alex-dinner",
+          "receivedAmount": 0,
+          "status": "expected"
+        }
+      ],
+      "review": {
+        "explanation": "Shared dining charge may need reimbursement tracking.",
+        "id": "review-dinner-shared",
+        "reason": "venmo",
+        "status": "open"
+      },
+      "splits": [
+        {
+          "amount": 59.36,
+          "category": "Dining",
+          "id": "split-owner-dinner",
+          "intent": "personal",
+          "label": "James"
+        },
+        {
+          "amount": 59.36,
+          "category": "Dining",
+          "id": "split-alex-dinner",
+          "intent": "reimbursable",
+          "label": "Alex"
+        }
+      ],
+      "status": "posted"
+    },
+    {
+      "account": {
+        "displayName": "Everyday Checking",
+        "institutionName": "Demo Bank",
+        "mask": "4321"
+      },
+      "amount": 59.36,
+      "category": "Peer Payments",
+      "categoryId": "cat-peer-payments",
+      "confidence": 0.74,
+      "date": "2026-05-11",
+      "id": "txn-alex-payment",
+      "intent": "personal",
+      "merchant": "Alex payment",
+      "reimbursements": [],
+      "review": {
+        "explanation": "Incoming payment may match an expected reimbursement.",
+        "id": "review-alex-payment",
+        "reason": "unclear-transfer",
+        "status": "open"
+      },
+      "splits": [],
+      "status": "posted"
+    }
+  ],
+  "safety": {
+    "excludedFields": [
+      "access_token_ciphertext",
+      "raw_payload",
+      "payment_meta",
+      "location",
+      "plaid_item_id",
+      "plaid_account_id",
+      "plaid_transaction_id",
+      "transaction_cursor",
+      "auth_header",
+      "authorization",
+      "cookie",
+      "set_cookie",
+      "service_role_key",
+      "supabase_service_role_key",
+      "plaid_secret",
+      "plaid_access_token",
+      "openai_api_key",
+      "account_number",
+      "database_url",
+      "email",
+      "phone",
+      "raw_transaction_id",
+      "routing_number",
+      "ssn",
+      "user_id"
+    ],
+    "rawProviderPayloadIncluded": false,
+    "secretsIncluded": false,
+    "writesAllowed": false
+  },
+  "source": "ledger",
+  "userScoped": true
+}

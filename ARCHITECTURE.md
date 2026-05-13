@@ -30,7 +30,7 @@ Plaid API
 - `src/lib/db` owns typed database access and conversion from database rows to app records.
 - `src/lib/plaid` owns Plaid configuration, Link token creation, public token exchange, transaction sync, disconnect, token encryption, and safe error handling.
 - `src/lib/demo` owns local demo mode and seeded in-memory finance data.
-- `src/lib/agents` owns the proposal-only finance action manifest and derived agent inbox proposal shaping.
+- `src/lib/agents` owns the proposal-only finance action manifest, OpenClaw-safe context contracts, clarification policy, weekly planning context, and proposal-store safety helpers.
 - `src/lib/review`, `src/lib/recurring`, `src/lib/finance`, `src/lib/settings`, and `src/lib/insights` own domain calculations and setup-state helpers.
 - `supabase/migrations` owns schema, indexes, grants, RLS, and policies.
 
@@ -84,6 +84,7 @@ Core tables:
 - `review_items`: open/resolved/dismissed review tasks generated from heuristics and suggestions, including peer-to-peer, large, transfer-pair, new-recurring, low-confidence, missing-category, unclear-transfer, and recurring-candidate reasons.
 - `transaction_splits`: split allocations for peer-to-peer or shared spending.
 - `reimbursement_records`: expected/requested/received reimbursement tracking for reimbursable split portions.
+- `agent_proposals`: persistent user-owned assistant proposals and clarification requests. Evidence and proposed patches are JSON objects that must pass forbidden-field checks before insert; accepted writes still re-read user-owned finance rows and write audit events.
 - `recurring_expenses`: confirmed, pending, paused, or dismissed recurring rows.
 - `insights`: persisted insight cards.
 - `merchant_rules`: reusable merchant/category/intent rules for future automation.
@@ -167,7 +168,11 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 Manual AI suggestions are advisory and require explicit user acceptance. When `ENABLE_OPENAI_AUTO_REVIEW=true`, eligible high-confidence ordinary cleanup can be applied by server-side heuristics during import or review processing; peer-to-peer and ambiguous items remain manual.
 
-The proposal-only finance action manifest in `src/lib/agents/finance-action-manifest.ts` defines read summaries and draft-only proposal actions for agent handoffs. `src/lib/agents/weekly-planning-context.ts` builds the v1 OpenClaw/assistant weekly planning context as a pure read model over existing spending, income, reimbursement, review, cashflow, and sync summaries. It excludes transfers from spend/income planning and surfaces transfers only as a separate signal, and it runs the manifest forbidden-field guard before handoff. The agent inbox at `/agent-inbox` is a proposal-first surface over open review items and stored review suggestions. It renders minimized enriched transaction context plus safe Plaid labels, omitting raw Plaid payloads, provider ids, tokens, auth headers, service-role keys, and cursors. Approvals reuse the explicit review acceptance action so writes stay user-initiated and audit-backed; dismissals reuse the standard review dismissal path.
+The proposal-only finance action manifest in `src/lib/agents/finance-action-manifest.ts` defines read summaries and draft-only proposal actions for agent handoffs. `src/lib/agents/weekly-planning-context.ts` builds the v1 OpenClaw/assistant weekly planning context as a pure read model over existing spending, income, reimbursement, review, cashflow, and sync summaries. It excludes transfers from spend/income planning and surfaces transfers only as a separate signal, and it runs the manifest forbidden-field guard before handoff.
+
+The `agent_proposals` table persists longer-lived assistant suggestions and clarification requests so OpenClaw integrations do not need to recreate state from open review items on every poll. `src/lib/db/queries.ts` exposes creation, listing, dismissal, clarification-answer recording, and narrow acceptance helpers. Inserted evidence and proposed patches are JSON objects checked by the assistant forbidden-field guard; expired pending proposals are hidden from normal pending lists. Acceptance is not autonomous: Ledger re-reads the current user-owned target row, dispatches through known mutation paths such as review suggestion acceptance or reimbursement matching, and writes `audit_events`.
+
+The agent inbox at `/agent-inbox` is still the primary human review surface for derived review proposals today. It renders minimized enriched transaction context plus safe Plaid labels, omitting raw Plaid payloads, provider ids, tokens, auth headers, service-role keys, and cursors. Broader persisted proposal browsing is future UI work.
 
 Ambiguous reimbursement clarification is modeled as an agent-safe question request, not a mutation. `src/lib/agents/clarifications.ts` decides whether a reimbursement candidate should interrupt James, stay silent, or remain queued in the app based on confidence, accounting impact, open-question batching, and value thresholds. The resulting `assistant_clarification_request` carries minimized transaction context, a single question, evidence strings, and `writesAllowed: false`. Answers become feedback for future reimbursement matching and suppression, but any split, reimbursement record, merchant rule, or review resolution still needs an explicit approval path that re-reads user-owned rows and writes audit events.
 

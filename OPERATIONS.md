@@ -293,6 +293,7 @@ If `OPENAI_API_KEY` is set:
 - suggestions should remain advisory,
 - no AI provider should perform autonomous writes,
 - accepted suggestions and merchant rules should still require explicit user actions,
+- persisted `agent_proposals` rows should contain only safe evidence/proposed-patch JSON and should be accepted only through Ledger-owned helpers that write audit events,
 - raw provider secrets must stay server-only.
 
 ## Database Maintenance

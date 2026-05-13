@@ -99,6 +99,8 @@ Ambiguous reimbursement matches should become concise clarification requests onl
 
 The `/agent-inbox` route remains available as a secondary proposal/audit queue for finance-agent recommendations. It derives sanitized proposals from open review items and stored suggestions; it is not a separate autonomous mutation store. The primary workflow is `/review`; the main navigation points there so high-confidence automation stays out of the way and only exceptions need attention.
 
+Ledger also has a persistent `agent_proposals` store for longer-lived assistant proposals and clarification requests. The store is user-owned, RLS-protected, and accepts only minimized evidence/proposed-patch JSON that passes forbidden-field checks. Persisted proposals can be dismissed, answered, or accepted only through Ledger-owned helpers that re-read the current finance rows and write audit events.
+
 Approving an inbox item applies the same explicit review approval path used by `/review`; dismissing an item only resolves the review item as dismissed. Import-time auto-categorization is limited to conservative high-confidence cleanup and records audit events.
 
 ### Edit Enriched Records

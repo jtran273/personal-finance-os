@@ -1,6 +1,7 @@
 import { BASE_DATE, ledgerData, type LedgerTransaction } from "@/components/ledger/data";
 import type {
   AccountRow,
+  AgentProposalRow,
   AuditEventRow,
   BalanceSnapshotRow,
   CategoryRow,
@@ -366,6 +367,7 @@ const insights: InsightRow[] = [
 
 const rows = {
   accounts,
+  agent_proposals: [] as AgentProposalRow[],
   audit_events: [] as AuditEventRow[],
   balance_snapshots: balanceSnapshots,
   categories,

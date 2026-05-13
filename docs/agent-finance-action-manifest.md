@@ -143,7 +143,7 @@ OpenClaw handoff payloads should use this envelope:
 }
 ```
 
-OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. The current `/agent-inbox` UI derives proposals from open review items and stored review suggestions; a persistent generic proposal store is still future work. If a future integration adds an apply endpoint, it must be separate from this manifest, same-origin protected, user scoped, audited, and named as an approval action rather than an agent action.
+OpenClaw may route the proposal to a user notification or an approval surface, but it must not execute the proposal as a mutation. Persisted suggestions and clarification questions belong in `agent_proposals`, a user-owned store with minimized evidence and proposed-patch JSON that must pass the same forbidden-field checks before insert. If a future integration adds an apply endpoint, it must call Ledger-owned acceptance helpers, re-read the target row, remain user scoped, and write audit events.
 
 The narrower assistant context and suggestion JSON contract is documented in `docs/openclaw-ledger-assistant-contract.md`. Its TypeScript definitions live in `src/lib/agents/assistant-contract.ts`, with reimbursement review fixture examples under `src/lib/agents/fixtures/`.
 
@@ -203,7 +203,7 @@ Answer normalization should accept terse replies:
 | `not reimbursement` | `not-reimbursement` | Suppress this candidate as reimbursable spending. |
 | `split between Alex and Sam` | `split-counterparties`, `["Alex", "Sam"]` | Draft a split across those counterparties for later approval. |
 
-After James answers, Ledger should store learning as auditable feedback tied to the candidate and target transaction. The persisted record should include the normalized answer kind, counterparties when supplied, original question id, question fingerprint, model or heuristic source, confidence at ask time, raw answer text, created/answered timestamps, and whether the answer produced an approved split, reimbursement record, merchant rule, or suppression rule. Feedback can improve future matching and batching, but it must not directly apply transaction splits, reimbursement records, merchant rules, or review resolutions without an approval action that re-reads the target row, shows the diff, scopes by `user_id`, and writes an `audit_events` row.
+After James answers, Ledger stores learning on the `agent_proposals` row as raw answer text, normalized answer kind, answer timestamp, and structured proposed-patch feedback such as counterparties. Feedback can improve future matching and batching, but it must not directly apply transaction splits, reimbursement records, merchant rules, or review resolutions without an approval action that re-reads the target row, shows the diff, scopes by `user_id`, and writes an `audit_events` row.
 
 ## Audit Requirements
 

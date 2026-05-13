@@ -1,6 +1,11 @@
 import type {
   AccountRecord,
   AccountRow,
+  AgentProposalRecord,
+  AgentProposalRow,
+  AgentProposalStatus,
+  AgentProposalType,
+  AgentTargetKind,
   AuditEventRow,
   BalanceSnapshotRecord,
   BalanceSnapshotRow,
@@ -30,6 +35,15 @@ import type {
   TransactionSplitRecord,
   TransactionSplitRow
 } from "./types";
+import {
+  assertAgentProposalPayloadSafe,
+  canDismissAgentProposal,
+  isAgentProposalExpired,
+  isJsonObject,
+  isVisibleAgentProposal,
+  normalizeAgentClarificationAnswer,
+  type AgentProposalJsonObject
+} from "../agents/proposals";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
 
@@ -148,6 +162,8 @@ export interface AuditEventInput {
 }
 
 type EnrichedTransactionUpdate = Database["public"]["Tables"]["enriched_transactions"]["Update"];
+type AgentProposalInsert = Database["public"]["Tables"]["agent_proposals"]["Insert"];
+type AgentProposalUpdate = Database["public"]["Tables"]["agent_proposals"]["Update"];
 type AuditEventInsert = Database["public"]["Tables"]["audit_events"]["Insert"];
 type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
 type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
@@ -178,6 +194,33 @@ export interface UnlinkReimbursementInput {
   actorId?: string | null;
   reimbursementId: string;
   restoredReceivedTransactionIntent?: TransactionIntent;
+  source?: string;
+}
+
+export interface AgentProposalMutationInput {
+  clarificationQuestion?: string | null;
+  confidence?: number | null;
+  evidence?: Json;
+  expiresAt?: string | null;
+  proposedPatch?: Json;
+  proposalType: AgentProposalType;
+  questionFingerprint?: string | null;
+  sourceAgent: string;
+  sourceCandidateId?: string | null;
+  sourceContextId?: string | null;
+  targetId: string;
+  targetKind: AgentTargetKind;
+}
+
+export interface AgentProposalListFilters {
+  includeExpired?: boolean;
+  limit?: number;
+  since?: string;
+  status?: AgentProposalStatus | "all";
+}
+
+export interface AcceptAgentProposalOptions {
+  actorId?: string | null;
   source?: string;
 }
 
@@ -346,6 +389,33 @@ function toInsightRecord(row: InsightRow): InsightRecord {
     payload: row.payload,
     generatedAt: row.generated_at,
     expiresAt: row.expires_at
+  };
+}
+
+function toAgentProposalRecord(row: AgentProposalRow): AgentProposalRecord {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    proposalType: row.proposal_type,
+    targetKind: row.target_kind,
+    targetId: row.target_id,
+    evidence: row.evidence,
+    confidence: row.confidence,
+    proposedPatch: row.proposed_patch,
+    status: row.status,
+    clarificationQuestion: row.clarification_question,
+    clarificationAnswer: row.clarification_answer,
+    clarificationAnswerKind: row.clarification_answer_kind,
+    questionFingerprint: row.question_fingerprint,
+    sourceContextId: row.source_context_id,
+    sourceCandidateId: row.source_candidate_id,
+    sourceAgent: row.source_agent,
+    expiresAt: row.expires_at,
+    acceptedAt: row.accepted_at,
+    dismissedAt: row.dismissed_at,
+    answeredAt: row.answered_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -951,6 +1021,334 @@ export async function listInsights(
     .order("generated_at", { ascending: false });
 
   return expectData(result, "List insights").map(toInsightRecord);
+}
+
+function agentProposalAuditData(proposal: AgentProposalRecord): Record<string, Json> {
+  return {
+    confidence: proposal.confidence,
+    proposalType: proposal.proposalType,
+    questionFingerprint: proposal.questionFingerprint,
+    sourceAgent: proposal.sourceAgent,
+    status: proposal.status,
+    targetId: proposal.targetId,
+    targetKind: proposal.targetKind
+  };
+}
+
+function proposalPatchObject(proposal: AgentProposalRecord): AgentProposalJsonObject {
+  if (!isJsonObject(proposal.proposedPatch)) {
+    throw new FinanceDbError("Read agent proposal patch", { message: "Agent proposal patch must be an object." });
+  }
+  return proposal.proposedPatch;
+}
+
+function reviewSuggestionPatchFromProposal(proposal: AgentProposalRecord): TransactionEnrichmentPatch {
+  const patch = proposalPatchObject(proposal);
+  const update: TransactionEnrichmentPatch = {};
+
+  if (typeof patch.merchantName === "string") update.merchantName = patch.merchantName;
+  if (typeof patch.categoryId === "string" || patch.categoryId === null) update.categoryId = patch.categoryId;
+  if (typeof patch.categoryName === "string") update.categoryName = patch.categoryName;
+  if (
+    patch.intent === "personal" ||
+    patch.intent === "business" ||
+    patch.intent === "shared" ||
+    patch.intent === "reimbursable" ||
+    patch.intent === "transfer"
+  ) {
+    update.intent = patch.intent;
+  }
+  if (typeof patch.note === "string") update.note = patch.note;
+  if (typeof patch.isRecurring === "boolean") update.isRecurring = patch.isRecurring;
+  if (typeof patch.confidence === "number") update.confidence = patch.confidence;
+
+  if (Object.keys(update).length === 0) {
+    throw new FinanceDbError("Accept review suggestion proposal", { message: "Agent proposal does not contain an applicable review patch." });
+  }
+
+  return update;
+}
+
+function reimbursementMatchInputFromProposal(proposal: AgentProposalRecord): Pick<LinkReimbursementInput, "appliedAmount" | "receivedTransactionId" | "reimbursementId"> {
+  const patch = proposalPatchObject(proposal);
+  const reimbursementId = typeof patch.reimbursementRecordId === "string" ? patch.reimbursementRecordId : proposal.targetId;
+  const receivedTransactionId = typeof patch.receivedTransactionId === "string" ? patch.receivedTransactionId : null;
+  const appliedAmount = typeof patch.matchAmount === "number" ? patch.matchAmount : undefined;
+
+  if (!receivedTransactionId) {
+    throw new FinanceDbError("Accept reimbursement match proposal", { message: "Agent proposal is missing a received transaction id." });
+  }
+
+  return { appliedAmount, receivedTransactionId, reimbursementId };
+}
+
+function assertPendingAgentProposal(proposal: AgentProposalRecord, context: string) {
+  if (proposal.status !== "pending") {
+    throw new FinanceDbError(context, { message: "Agent proposal is not pending." });
+  }
+  if (isAgentProposalExpired(proposal)) {
+    throw new FinanceDbError(context, { message: "Agent proposal has expired." });
+  }
+}
+
+export async function createAgentProposal(
+  client: FinanceSupabaseClient,
+  userId: string,
+  input: AgentProposalMutationInput
+): Promise<AgentProposalRecord> {
+  const evidence = input.evidence ?? {};
+  const proposedPatch = input.proposedPatch ?? {};
+  assertAgentProposalPayloadSafe(evidence, proposedPatch);
+
+  const insert: AgentProposalInsert = {
+    user_id: userId,
+    proposal_type: input.proposalType,
+    target_kind: input.targetKind,
+    target_id: input.targetId,
+    evidence,
+    confidence: input.confidence ?? null,
+    proposed_patch: proposedPatch,
+    clarification_question: input.clarificationQuestion ?? null,
+    question_fingerprint: input.questionFingerprint ?? null,
+    source_agent: input.sourceAgent,
+    source_candidate_id: input.sourceCandidateId ?? null,
+    source_context_id: input.sourceContextId ?? null,
+    expires_at: input.expiresAt ?? null
+  };
+
+  const result = await client
+    .from("agent_proposals")
+    .insert(insert)
+    .select("*")
+    .single();
+
+  return toAgentProposalRecord(expectData(result, "Create agent proposal"));
+}
+
+export async function listAgentProposals(
+  client: FinanceSupabaseClient,
+  userId: string,
+  filters: AgentProposalListFilters = {}
+): Promise<AgentProposalRecord[]> {
+  let query = client
+    .from("agent_proposals")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  if (filters.status && filters.status !== "all") {
+    query = query.eq("status", filters.status);
+  }
+  if (filters.since) {
+    query = query.gte("created_at", filters.since);
+  }
+
+  const rows = expectData(await query, "List agent proposals")
+    .map(toAgentProposalRecord)
+    .filter((proposal) => isVisibleAgentProposal(proposal, { includeExpired: filters.includeExpired }));
+
+  return filters.limit === undefined ? rows : rows.slice(0, filters.limit);
+}
+
+export async function getAgentProposalById(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposalId: string
+): Promise<AgentProposalRecord | null> {
+  const result = await client
+    .from("agent_proposals")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", proposalId)
+    .single();
+
+  if (result.error) {
+    if (result.error.message.toLowerCase().includes("no rows")) return null;
+    throw new FinanceDbError("Load agent proposal", result.error);
+  }
+  return result.data ? toAgentProposalRecord(result.data) : null;
+}
+
+async function updateAgentProposalStatus(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposalId: string,
+  update: AgentProposalUpdate,
+  context: string
+): Promise<AgentProposalRecord> {
+  const result = await client
+    .from("agent_proposals")
+    .update(update)
+    .eq("user_id", userId)
+    .eq("id", proposalId)
+    .select("*")
+    .single();
+
+  return toAgentProposalRecord(expectData(result, context));
+}
+
+export async function dismissAgentProposal(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposalId: string,
+  options: { actorId?: string | null; source?: string } = {}
+): Promise<AgentProposalRecord> {
+  const before = await getAgentProposalById(client, userId, proposalId);
+  if (!before) {
+    throw new FinanceDbError("Dismiss agent proposal", { message: "Agent proposal was not found." });
+  }
+  if (!canDismissAgentProposal(before.status)) {
+    throw new FinanceDbError("Dismiss agent proposal", { message: "Agent proposal can no longer be dismissed." });
+  }
+  if (before.status === "dismissed") return before;
+
+  const dismissed = await updateAgentProposalStatus(
+    client,
+    userId,
+    proposalId,
+    {
+      dismissed_at: new Date().toISOString(),
+      status: "dismissed"
+    },
+    "Dismiss agent proposal"
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "agent_proposal.dismissed",
+    actorId: options.actorId ?? userId,
+    afterData: agentProposalAuditData(dismissed),
+    beforeData: agentProposalAuditData(before),
+    entityId: dismissed.id,
+    entityTable: "agent_proposals",
+    metadata: {
+      proposalId: dismissed.id,
+      source: options.source ?? "agent_proposal_store"
+    }
+  });
+
+  return dismissed;
+}
+
+export async function recordClarificationAnswer(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposalId: string,
+  rawAnswer: string,
+  options: { actorId?: string | null; source?: string } = {}
+): Promise<AgentProposalRecord> {
+  const before = await getAgentProposalById(client, userId, proposalId);
+  if (!before) {
+    throw new FinanceDbError("Record clarification answer", { message: "Agent proposal was not found." });
+  }
+  assertPendingAgentProposal(before, "Record clarification answer");
+  if (before.proposalType !== "clarification_request") {
+    throw new FinanceDbError("Record clarification answer", { message: "Agent proposal is not a clarification request." });
+  }
+
+  const answer = normalizeAgentClarificationAnswer(rawAnswer);
+  const answered = await updateAgentProposalStatus(
+    client,
+    userId,
+    proposalId,
+    {
+      answered_at: new Date().toISOString(),
+      clarification_answer: answer.rawAnswer,
+      clarification_answer_kind: answer.answerKind,
+      proposed_patch: {
+        ...(isJsonObject(before.proposedPatch) ? before.proposedPatch : {}),
+        counterparties: answer.counterparties
+      },
+      status: "answered"
+    },
+    "Record clarification answer"
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "agent_proposal.clarification_answered",
+    actorId: options.actorId ?? userId,
+    afterData: agentProposalAuditData(answered),
+    beforeData: agentProposalAuditData(before),
+    entityId: answered.id,
+    entityTable: "agent_proposals",
+    metadata: {
+      answerKind: answer.answerKind,
+      proposalId: answered.id,
+      source: options.source ?? "agent_proposal_store"
+    }
+  });
+
+  return answered;
+}
+
+export async function acceptAgentProposal(
+  client: FinanceSupabaseClient,
+  userId: string,
+  proposalId: string,
+  options: AcceptAgentProposalOptions = {}
+): Promise<AgentProposalRecord> {
+  const before = await getAgentProposalById(client, userId, proposalId);
+  if (!before) {
+    throw new FinanceDbError("Accept agent proposal", { message: "Agent proposal was not found." });
+  }
+  assertPendingAgentProposal(before, "Accept agent proposal");
+
+  if (before.proposalType === "review_suggestion") {
+    if (before.targetKind !== "review_item") {
+      throw new FinanceDbError("Accept review suggestion proposal", { message: "Review suggestions must target a review item." });
+    }
+    const review = await getReviewQueueItemById(client, userId, before.targetId);
+    if (!review || review.status !== "open") {
+      throw new FinanceDbError("Accept review suggestion proposal", { message: "Review item is no longer open." });
+    }
+    const patch = reviewSuggestionPatchFromProposal(before);
+    await updateTransactionEnrichment(client, userId, review.transaction.id, {
+      ...patch,
+      reviewedAt: new Date().toISOString(),
+      source: "ai"
+    });
+    await resolveReviewItem(
+      client,
+      userId,
+      review.id,
+      "resolved",
+      "Accepted persisted agent proposal."
+    );
+  } else if (before.proposalType === "reimbursement_match") {
+    const input = reimbursementMatchInputFromProposal(before);
+    await linkReimbursementReceivedTransaction(client, userId, {
+      ...input,
+      actorId: options.actorId ?? userId,
+      source: options.source ?? "agent_proposal_acceptance"
+    });
+  } else {
+    throw new FinanceDbError("Accept agent proposal", { message: `Agent proposal type ${before.proposalType} does not have an acceptance path yet.` });
+  }
+
+  const accepted = await updateAgentProposalStatus(
+    client,
+    userId,
+    proposalId,
+    {
+      accepted_at: new Date().toISOString(),
+      status: "accepted"
+    },
+    "Accept agent proposal"
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "agent_proposal.accepted",
+    actorId: options.actorId ?? userId,
+    afterData: agentProposalAuditData(accepted),
+    beforeData: agentProposalAuditData(before),
+    entityId: accepted.id,
+    entityTable: "agent_proposals",
+    metadata: {
+      proposalId: accepted.id,
+      source: options.source ?? "agent_proposal_store"
+    }
+  });
+
+  return accepted;
 }
 
 export async function getFinanceDashboardData(

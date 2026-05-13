@@ -12,6 +12,7 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import { displayCategoryName } from "@/lib/finance/classification";
 import { isReportableIncomeIntent } from "@/lib/finance/reimbursement-linking";
 import { isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
 import {
@@ -19,6 +20,7 @@ import {
   CreditCard,
   Database,
   Landmark,
+  RefreshCw,
   Tags,
   TrendingDown,
   TrendingUp,
@@ -26,6 +28,7 @@ import {
   type LucideIcon
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./dashboard.module.css";
 
@@ -59,7 +62,7 @@ interface DashboardViewProps {
 }
 
 type TrendRangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
-type ActivityMode = "point" | "through";
+type ActivityMode = "after" | "before" | "point";
 type CategoryViewMode = "trend" | "month";
 
 interface BalanceViewOption {
@@ -84,6 +87,12 @@ const compactMoneyFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 1,
   minimumFractionDigits: 1,
   notation: "compact",
+  style: "currency"
+});
+
+const axisMoneyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "USD",
+  maximumFractionDigits: 0,
   style: "currency"
 });
 
@@ -113,6 +122,14 @@ function formatMoney(value: number, compact = false) {
   return (compact ? compactMoneyFormatter : moneyFormatter).format(value);
 }
 
+function formatAxisMoney(value: number, scaleRange: number) {
+  if (Math.abs(value) < 10_000 || scaleRange < 1_000) {
+    return axisMoneyFormatter.format(value);
+  }
+
+  return compactMoneyFormatter.format(value);
+}
+
 function formatSignedMoney(value: number) {
   if (value === 0) return formatMoney(0);
   return `${value > 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
@@ -140,8 +157,52 @@ function addDaysIso(value: string, days: number) {
   return isoDate(date);
 }
 
+function monthStartIso(value: string) {
+  return `${value.slice(0, 7)}-01`;
+}
+
+function monthEndIso(value: string) {
+  const month = value.slice(0, 7);
+  const [yearText, monthText] = month.split("-");
+  const end = new Date(Date.UTC(Number(yearText), Number(monthText), 0));
+  return end.toISOString().slice(0, 10);
+}
+
+function transactionDateParams(fromDate: string, toDate: string, preferToDateMonth = false) {
+  const month = fromDate.slice(0, 7) === toDate.slice(0, 7) || preferToDateMonth
+    ? toDate.slice(0, 7)
+    : "";
+
+  if (!month) return { from: fromDate, to: toDate };
+
+  const monthStart = `${month}-01`;
+  const monthEnd = monthEndIso(toDate);
+
+  return {
+    from: fromDate > monthStart ? fromDate : undefined,
+    month,
+    to: toDate < monthEnd ? toDate : undefined
+  };
+}
+
 function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function trendScaleDomain(values: readonly number[]) {
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const rawRange = max - min;
+  const magnitude = Math.max(Math.abs(max), Math.abs(min), 1);
+  const minimumVisibleRange = Math.min(10_000, Math.max(100, magnitude * 0.04));
+  const scaleRange = Math.max(rawRange * 1.16, minimumVisibleRange);
+  const midpoint = (max + min) / 2;
+
+  return {
+    max: midpoint + scaleRange / 2,
+    min: midpoint - scaleRange / 2,
+    range: scaleRange
+  };
 }
 
 function rangeOptionForKey(rangeKey: TrendRangeKey) {
@@ -166,7 +227,9 @@ function latestTrendDelta(trend: readonly BalanceTrendPoint[]) {
   const first = trend[0];
   const latest = trend[trend.length - 1];
   const amount = latest.netWorth - first.netWorth;
-  const percent = first.netWorth === 0 ? 0 : (amount / Math.abs(first.netWorth)) * 100;
+  const percent = first.netWorth === 0
+    ? null
+    : (amount / Math.abs(first.netWorth)) * 100;
 
   return { amount, percent };
 }
@@ -177,9 +240,16 @@ function pointDelta(trend: readonly BalanceTrendPoint[], index: number) {
   const previous = trend[index - 1];
   const current = trend[index];
   const amount = current.netWorth - previous.netWorth;
-  const percent = previous.netWorth === 0 ? 0 : (amount / Math.abs(previous.netWorth)) * 100;
+  const percent = previous.netWorth === 0
+    ? null
+    : (amount / Math.abs(previous.netWorth)) * 100;
 
   return { amount, percent };
+}
+
+function formatDeltaPercentSuffix(percent: number | null) {
+  if (percent === null || !Number.isFinite(percent)) return "";
+  return ` (${percent >= 0 ? "+" : ""}${percent.toFixed(1)}%)`;
 }
 
 function deltaToneClass(amount: number, positiveIsGood: boolean) {
@@ -212,13 +282,6 @@ function transactionAmountClass(amount: number) {
   if (amount > 0) return styles.positiveAmount;
   if (amount < 0) return styles.negativeAmount;
   return "";
-}
-
-function syncLabel(summary: SyncSummary) {
-  if (summary.status === "empty") return "No accounts";
-  if (summary.status === "never") return "Never synced";
-  if (summary.status === "stale") return `${summary.staleCount + summary.neverSyncedCount} stale`;
-  return "Fresh";
 }
 
 function formatRelativeTime(value: string | null) {
@@ -396,9 +459,7 @@ function TrendChart({
   }
 
   const values = selectedTrend.map((point) => point.netWorth);
-  const max = Math.max(...values);
-  const min = Math.min(...values);
-  const range = max - min || 1;
+  const scale = trendScaleDomain(values);
   const compactChart = containerWidth < 520;
   const width = Math.max(compactChart ? 320 : 520, containerWidth);
   const height = compactChart ? 176 : 220;
@@ -409,7 +470,7 @@ function TrendChart({
   const plotHeight = height - padding.top - padding.bottom;
   const points = selectedTrend.map((point, index) => {
     const x = selectedTrend.length === 1 ? width / 2 : padding.left + (index / (selectedTrend.length - 1)) * plotWidth;
-    const y = padding.top + plotHeight - ((point.netWorth - min) / range) * plotHeight;
+    const y = padding.top + plotHeight - ((point.netWorth - scale.min) / scale.range) * plotHeight;
     return [x, y] as const;
   });
   const line =
@@ -442,45 +503,73 @@ function TrendChart({
     )),
     activeDelta?.amount ?? null
   ).slice(0, 10) : periodTransactions;
-  const throughTransactions = hasSelectedPoint ? sortTransactionsByDate(
-    scopedTransactions.filter((transaction) => transaction.date >= start.date && transaction.date <= activePoint.date)
+  const activityPeriodStartDate = hasSelectedPoint && rangeKey === "1M" && monthStartIso(activePoint.date) > start.date
+    ? monthStartIso(activePoint.date)
+    : start.date;
+  const beforePointEndDate = hasSelectedPoint ? addDaysIso(activePoint.date, -1) : end.date;
+  const afterPointStartDate = hasSelectedPoint ? addDaysIso(activePoint.date, 1) : start.date;
+  const beforeTransactions = hasSelectedPoint ? sortTransactionsByDate(
+    scopedTransactions.filter((transaction) => (
+      beforePointEndDate >= activityPeriodStartDate &&
+      transaction.date >= activityPeriodStartDate &&
+      transaction.date <= beforePointEndDate
+    ))
+  ).slice(0, 10) : periodTransactions;
+  const afterTransactions = hasSelectedPoint ? sortTransactionsByDate(
+    scopedTransactions.filter((transaction) => (
+      afterPointStartDate <= end.date &&
+      transaction.date >= afterPointStartDate &&
+      transaction.date <= end.date
+    ))
   ).slice(0, 10) : periodTransactions;
   const visibleTransactions = !hasSelectedPoint
     ? periodTransactions
     : activityMode === "point"
       ? pointTransactions
-      : throughTransactions;
-  const activityFromDate = !hasSelectedPoint
+      : activityMode === "before"
+        ? beforeTransactions
+        : afterTransactions;
+  const candidateActivityFromDate = !hasSelectedPoint
     ? start.date
     : activityMode === "point"
       ? previousPoint ? addDaysIso(previousPoint.date, 1) : start.date
-      : start.date;
-  const activityToDate = hasSelectedPoint ? activePoint.date : end.date;
+      : activityMode === "before"
+        ? activityPeriodStartDate
+        : afterPointStartDate;
+  const candidateActivityToDate = !hasSelectedPoint
+    ? end.date
+    : activityMode === "before"
+      ? beforePointEndDate
+      : activityMode === "after"
+        ? end.date
+        : activePoint.date;
+  const hasValidActivityRange = candidateActivityFromDate <= candidateActivityToDate;
+  const activityFromDate = hasValidActivityRange ? candidateActivityFromDate : start.date;
+  const activityToDate = hasValidActivityRange ? candidateActivityToDate : end.date;
   const activityHref = transactionsHref({
     exclude_transfers: true,
-    from: activityFromDate,
-    to: activityToDate
+    ...transactionDateParams(activityFromDate, activityToDate, rangeKey === "1M")
   });
   const gridLines = [
-    { label: max, y: padding.top },
-    { label: min + range / 2, y: padding.top + plotHeight / 2 },
-    { label: min, y: padding.top + plotHeight }
+    { label: scale.max, y: padding.top },
+    { label: scale.min + scale.range / 2, y: padding.top + plotHeight / 2 },
+    { label: scale.min, y: padding.top + plotHeight }
   ];
   const sourceLabel = hasSnapshotTrend
     ? `${snapshotCount.toLocaleString("en-US")} balance snapshots available`
     : hasTransactionTrend
-      ? "Estimated from posted non-transfer transaction history"
+      ? "Based on posted non-transfer transaction history"
       : "Snapshot trend unavailable; using current persisted balances";
   const activeSourceLabel = activePoint.source === "snapshot"
     ? "Daily Plaid balance snapshot"
     : activePoint.source === "transaction"
-      ? "Estimated from posted transactions"
+      ? "Based on posted transactions"
       : "Current persisted balance";
   const selectedPeriodDeltaLabel = delta
-    ? `${formatSignedMoney(delta.amount)} (${delta.percent >= 0 ? "+" : ""}${delta.percent.toFixed(1)}%)`
+    ? `${formatSignedMoney(delta.amount)}${formatDeltaPercentSuffix(delta.percent)}`
     : "No change yet";
   const selectedPointDeltaLabel = activeDelta
-    ? `${formatSignedMoney(activeDelta.amount)} (${activeDelta.percent >= 0 ? "+" : ""}${activeDelta.percent.toFixed(1)}%)`
+    ? `${formatSignedMoney(activeDelta.amount)}${formatDeltaPercentSuffix(activeDelta.percent)}`
     : "Range start";
   const selectedPointX = activeCoords
     ? Math.min(Math.max(activeCoords[0], padding.left + 48), width - padding.right - 48)
@@ -500,7 +589,9 @@ function TrendChart({
     ? "Transactions in selected period"
     : activityMode === "point"
       ? "Transactions for selected point"
-      : "Transactions up to selected point";
+      : activityMode === "before"
+        ? "Transactions before selected point"
+        : "Transactions after selected point";
 
   return (
     <div className={styles.trendPanel}>
@@ -526,7 +617,7 @@ function TrendChart({
             <DeltaIcon size={14} aria-hidden />
             {delta ? (
               <>
-                {formatSignedMoney(delta.amount)} ({delta.percent >= 0 ? "+" : ""}{delta.percent.toFixed(1)}%)
+                {formatSignedMoney(delta.amount)}{formatDeltaPercentSuffix(delta.percent)}
               </>
             ) : (
               "No period delta yet"
@@ -593,7 +684,7 @@ function TrendChart({
                 y2={y}
               />
               <text className={styles.trendScaleLabel} x="4" y={y + 4}>
-                {formatMoney(label, true)}
+                {formatAxisMoney(label, scale.range)}
               </text>
             </g>
           ))}
@@ -705,12 +796,20 @@ function TrendChart({
                   Point
                 </button>
                 <button
-                  aria-pressed={activityMode === "through"}
-                  className={activityMode === "through" ? styles.activityModeActive : undefined}
-                  onClick={() => setActivityMode("through")}
+                  aria-pressed={activityMode === "before"}
+                  className={activityMode === "before" ? styles.activityModeActive : undefined}
+                  onClick={() => setActivityMode("before")}
                   type="button"
                 >
-                  Up to point
+                  Before
+                </button>
+                <button
+                  aria-pressed={activityMode === "after"}
+                  className={activityMode === "after" ? styles.activityModeActive : undefined}
+                  onClick={() => setActivityMode("after")}
+                  type="button"
+                >
+                  After
                 </button>
               </div>
             ) : null}
@@ -824,6 +923,10 @@ function sourceSummary(sources: Map<string, { amount: number; count: number }>) 
 
   if (sorted.length <= 1) return topSource;
   return `${topSource} + ${sorted.length - 1} more`;
+}
+
+function categoryIdsValue(categoryIds: Set<string>) {
+  return categoryIds.size > 0 ? [...categoryIds].sort().join(",") : null;
 }
 
 function buildIncomeBreakdownForRange(
@@ -950,6 +1053,7 @@ function buildCategoryTrend(
 ) {
   const grouped = new Map<string, {
     byDate: Map<string, number>;
+    categoryIds: Set<string>;
     count: number;
     id: string | null;
     label: string;
@@ -966,12 +1070,14 @@ function buildCategoryTrend(
     const amount = dashboardTransactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
-    const key = transaction.categoryId ?? transaction.category;
+    const label = displayCategoryName(transaction.category);
+    const key = label;
     const group = grouped.get(key) ?? {
       byDate: new Map<string, number>(),
+      categoryIds: new Set<string>(),
       count: 0,
-      id: transaction.categoryId,
-      label: transaction.category,
+      id: null,
+      label,
       pendingAmount: 0,
       total: 0
     };
@@ -979,6 +1085,7 @@ function buildCategoryTrend(
     group.byDate.set(transaction.date, roundMoney((group.byDate.get(transaction.date) ?? 0) + amount));
     group.count += 1;
     group.total = roundMoney(group.total + amount);
+    if (transaction.categoryId) group.categoryIds.add(transaction.categoryId);
     if (transaction.status === "pending") group.pendingAmount = roundMoney(group.pendingAmount + amount);
     grouped.set(key, group);
 
@@ -996,7 +1103,7 @@ function buildCategoryTrend(
       return {
         color: categoryTrendPalette[index % categoryTrendPalette.length],
         count: group.count,
-        id: group.id,
+        id: categoryIdsValue(group.categoryIds),
         label: group.label,
         pendingAmount: group.pendingAmount,
         points: dates.map((date) => {
@@ -1471,11 +1578,14 @@ export function DashboardView({
   syncSummary,
   totals
 }: DashboardViewProps) {
+  const router = useRouter();
   const [balanceViewKey, setBalanceViewKey] = useState<BalanceTrendScope>("cashMinusLiabilities");
   const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("1W");
   const [categoryRangeKey, setCategoryRangeKey] = useState<TrendRangeKey>("1M");
+  const [syncState, setSyncState] = useState<"idle" | "syncing">("idle");
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const cashMinusLiabilities = totals.cash - totals.liabilities;
-  const balanceViews: BalanceViewOption[] = [
+  const balanceViews: BalanceViewOption[] = useMemo(() => [
     {
       description: "All assets minus credit card balances.",
       icon: Landmark,
@@ -1510,9 +1620,34 @@ export function DashboardView({
       tone: cashMinusLiabilities < 0 ? "negative" : "positive",
       value: cashMinusLiabilities
     }
-  ];
+  ], [cashMinusLiabilities, totals.cash, totals.liabilities, totals.netWorth]);
   const selectedBalanceView = balanceViews.find((option) => option.key === balanceViewKey) ?? balanceViews[0];
   const selectedBalanceTone = selectedBalanceView.tone ?? (selectedBalanceView.value < 0 ? "negative" : undefined);
+  const lastSyncedLabel = formatRelativeTime(syncSummary.latestSyncedAt);
+
+  async function syncPlaidData() {
+    setSyncState("syncing");
+    setSyncMessage(null);
+
+    try {
+      const response = await fetch("/api/plaid/sync", {
+        cache: "no-store",
+        method: "POST"
+      });
+      const data = await response.json().catch(() => null) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Unable to sync Plaid data.");
+      }
+
+      setSyncMessage("Synced");
+      router.refresh();
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : "Unable to sync Plaid data.");
+    } finally {
+      setSyncState("idle");
+    }
+  }
 
   return (
     <div className={styles.shell}>
@@ -1535,11 +1670,12 @@ export function DashboardView({
       ) : null}
 
       {accounts.length === 0 ? (
-        <div className={styles.emptyState}>
+        <div className={styles.emptyState} role="status">
           <Database size={24} aria-hidden />
           <div>
             <strong>No persisted accounts yet</strong>
             <span>Connect Plaid to populate account balances and net worth.</span>
+            <Link className={styles.textLink} href="/accounts">Go to accounts</Link>
           </div>
         </div>
       ) : (
@@ -1552,11 +1688,24 @@ export function DashboardView({
               </h2>
               <p className={styles.heroDescription}>{selectedBalanceView.description}</p>
             </div>
-            <div className={`${styles.syncPill} ${styles[`sync-${syncSummary.status}`]}`}>
-              <Clock3 size={13} aria-hidden />
-              <span>{syncLabel(syncSummary)}</span>
-              <span>{formatRelativeTime(syncSummary.latestSyncedAt)}</span>
-            </div>
+            <section className={styles.syncActionPanel} aria-label="Plaid sync">
+              <div className={styles.syncActionMeta}>
+                <Clock3 size={13} aria-hidden />
+                <span>Plaid sync</span>
+                <strong>{lastSyncedLabel}</strong>
+              </div>
+              <button
+                aria-busy={syncState === "syncing"}
+                className={styles.syncActionLink}
+                disabled={syncState === "syncing"}
+                onClick={() => void syncPlaidData()}
+                type="button"
+              >
+                <RefreshCw className={syncState === "syncing" ? styles.spin : undefined} size={13} aria-hidden />
+                {syncState === "syncing" ? "Syncing" : "Sync"}
+              </button>
+              {syncMessage ? <span className={styles.syncActionStatus} role="status">{syncMessage}</span> : null}
+            </section>
           </div>
 
           <div className={styles.balanceViewControls} aria-label="Balance view">

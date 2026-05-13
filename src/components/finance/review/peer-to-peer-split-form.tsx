@@ -1,6 +1,18 @@
 "use client";
 
-import type { CategoryRecord, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { CategoryRecord, TransactionRecord } from "@/lib/db";
+import {
+  categoryOptionGroups,
+  displayTransactionIntent,
+  isTransferCategoryName,
+  primaryCategoryIdForId,
+  transactionIntentFromUi,
+  transactionTagFromIntent,
+  transactionTagOptions,
+  userTransactionIntentOptions,
+  type TransactionTag,
+  type UserTransactionIntent
+} from "@/lib/finance/classification";
 import type { NormalizedReviewSuggestion } from "@/lib/review/suggestions";
 import { Check, Plus, Trash2 } from "lucide-react";
 import { useActionState, useMemo, useState } from "react";
@@ -20,21 +32,15 @@ interface PeerToPeerSplitFormProps {
 
 interface SplitRowState {
   amount: string;
+  baseIntent: UserTransactionIntent;
   categoryId: string;
   id: string;
-  intent: TransactionIntent;
   label: string;
   notes: string;
+  tag: TransactionTag;
 }
 
 const initialState: ReviewActionState = {};
-const intentOptions: Array<{ label: string; value: TransactionIntent }> = [
-  { value: "personal", label: "Personal" },
-  { value: "shared", label: "Shared" },
-  { value: "reimbursable", label: "Reimbursable" },
-  { value: "business", label: "Business" },
-  { value: "transfer", label: "Transfer" }
-];
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
@@ -59,6 +65,7 @@ function formatMoneyFromCents(cents: number) {
 
 function findCategoryId(categories: CategoryRecord[], categoryName: string | undefined) {
   if (!categoryName) return null;
+  if (isTransferCategoryName(categoryName)) return null;
 
   const normalized = categoryName.trim().toLowerCase();
   return categories.find((category) => category.name.trim().toLowerCase() === normalized)?.id ?? null;
@@ -73,12 +80,19 @@ function defaultCategoryId(
     ? suggestion.categoryId
     : findCategoryId(categories, suggestion.categoryName);
 
-  return suggestedCategoryId ?? transaction.categoryId ?? categories.find((category) => category.name === "Uncategorized")?.id ?? "none";
+  return primaryCategoryIdForId(suggestedCategoryId, categories) ??
+    (isTransferCategoryName(transaction.category) ? null : primaryCategoryIdForId(transaction.categoryId, categories)) ??
+    categories.find((category) => category.name === "Uncategorized")?.id ??
+    "none";
 }
 
-function defaultIntent(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): TransactionIntent {
-  if (suggestion.intent) return suggestion.intent;
-  return transaction.intent === "transfer" ? "personal" : transaction.intent;
+function defaultBaseIntent(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): UserTransactionIntent {
+  const intent = suggestion.intent ?? transaction.intent;
+  return displayTransactionIntent(intent);
+}
+
+function defaultTag(suggestion: NormalizedReviewSuggestion, transaction: TransactionRecord): TransactionTag {
+  return transactionTagFromIntent(suggestion.intent ?? transaction.intent);
 }
 
 function buildInitialRows({
@@ -89,22 +103,24 @@ function buildInitialRows({
   if (transaction.splits.length > 0) {
     return transaction.splits.map((split) => ({
       amount: formatAmountInput(split.amount),
-      categoryId: split.categoryId ?? "none",
+      baseIntent: displayTransactionIntent(split.intent),
+      categoryId: primaryCategoryIdForId(split.categoryId, categories) ?? "none",
       id: split.id,
-      intent: split.intent,
       label: split.label,
-      notes: split.notes ?? ""
+      notes: split.notes ?? "",
+      tag: transactionTagFromIntent(split.intent)
     }));
   }
 
   return [
     {
       amount: formatAmountInput(transaction.amount),
+      baseIntent: defaultBaseIntent(suggestion, transaction),
       categoryId: defaultCategoryId(categories, suggestion, transaction),
       id: "split-initial",
-      intent: defaultIntent(suggestion, transaction),
       label: "My share",
-      notes: ""
+      notes: "",
+      tag: defaultTag(suggestion, transaction)
     }
   ];
 }
@@ -124,6 +140,7 @@ export function PeerToPeerSplitForm({
   const remainingCents = totalCents - allocatedCents;
   const fullyAllocated = remainingCents === 0;
   const fallbackCategoryId = defaultCategoryId(categories, suggestion, transaction);
+  const categoryGroups = categoryOptionGroups(categories);
 
   function updateRow(id: string, patch: Partial<SplitRowState>) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -136,9 +153,10 @@ export function PeerToPeerSplitForm({
         amount: formatAmountInput(Math.max(0, remainingCents) / 100),
         categoryId: fallbackCategoryId,
         id: `split-${Date.now()}`,
-        intent: "personal",
+        baseIntent: "personal",
         label: "New portion",
-        notes: ""
+        notes: "",
+        tag: "none"
       }
     ]);
   }
@@ -189,16 +207,31 @@ export function PeerToPeerSplitForm({
               <span>Intent</span>
               <select
                 className={styles.selectControl}
-                name="splitIntent"
-                onChange={(event) => updateRow(row.id, { intent: event.target.value as TransactionIntent })}
-                value={row.intent}
+                onChange={(event) => updateRow(row.id, { baseIntent: event.target.value as UserTransactionIntent })}
+                value={row.baseIntent}
               >
-                {intentOptions.map((option) => (
+                {userTransactionIntentOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label className={styles.splitTagField}>
+              <span>Tag</span>
+              <select
+                className={styles.selectControl}
+                onChange={(event) => updateRow(row.id, { tag: event.target.value as TransactionTag })}
+                value={row.tag}
+              >
+                {transactionTagOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input name="splitIntent" type="hidden" value={transactionIntentFromUi(row.baseIntent, row.tag)} />
             </label>
 
             <label className={styles.splitCategoryField}>
@@ -211,9 +244,9 @@ export function PeerToPeerSplitForm({
                 value={row.categoryId}
               >
                 <option value="none">Select category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
+                {categoryGroups.map((category) => (
+                  <option key={category.primaryCategoryId} value={category.primaryCategoryId}>
+                    {category.label}
                   </option>
                 ))}
               </select>

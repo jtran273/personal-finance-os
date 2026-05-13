@@ -104,6 +104,35 @@ test("Plaid token decryption can read legacy ciphertext in production without an
   });
 });
 
+test("Plaid token decryption tolerates missing Plaid credentials when an explicit key is set", () => {
+  let ciphertext = "";
+
+  withTokenVaultEnv({
+    ...baseEnv,
+    NODE_ENV: "production",
+    PLAID_TOKEN_ENCRYPTION_KEY: "rotated-key",
+    VERCEL_ENV: "production"
+  }, () => {
+    ciphertext = encryptPlaidAccessToken("rotated-access-token");
+  });
+
+  withTokenVaultEnv({
+    NEXT_PUBLIC_APP_URL: "http://localhost:3000",
+    NODE_ENV: "production",
+    PLAID_CLIENT_ID: undefined,
+    PLAID_ENV: undefined,
+    PLAID_PRODUCTION_SECRET: undefined,
+    PLAID_REDIRECT_URI: undefined,
+    PLAID_SANDBOX_SECRET: undefined,
+    PLAID_SECRET: undefined,
+    PLAID_TOKEN_ENCRYPTION_KEY: "rotated-key",
+    VERCEL_ENV: "production",
+    VERCEL_URL: undefined
+  }, () => {
+    assert.equal(decryptPlaidAccessToken(ciphertext), "rotated-access-token");
+  });
+});
+
 test("Plaid token encryption still requires explicit key material in production", () => {
   withTokenVaultEnv({
     ...baseEnv,

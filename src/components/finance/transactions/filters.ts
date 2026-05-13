@@ -7,6 +7,7 @@ import type {
   TransactionListFilters,
   TransactionQualityFilter
 } from "@/lib/db";
+import { categoryIdsFromFilterValue, categoryOptionGroups } from "@/lib/finance/classification";
 
 export type TransactionSearchParamValue = string | string[] | undefined;
 export type TransactionSearchParams = Record<string, TransactionSearchParamValue>;
@@ -15,7 +16,6 @@ export const transactionIntentOptions: Array<{ label: string; value: Transaction
   { value: "all", label: "All intents" },
   { value: "personal", label: "Personal" },
   { value: "business", label: "Business" },
-  { value: "shared", label: "Shared" },
   { value: "reimbursable", label: "Reimbursable" },
   { value: "transfer", label: "Transfer" }
 ];
@@ -155,7 +155,7 @@ function deriveState(input: Omit<TransactionFilterState, "isDateRangeInverted" |
 export function parseTransactionFilters(params: TransactionSearchParams): TransactionFilterState {
   const search = cleanText(params.q, 120);
   const requestedAccountId = cleanText(params.account, 80);
-  const requestedCategoryId = cleanText(params.category, 80);
+  const requestedCategoryId = cleanText(params.category, 600);
   const requestedIntent = cleanText(params.intent, 24);
   const requestedReviewStatus = cleanText(params.review, 24);
   const requestedReviewReason = cleanText(params.reason, 32);
@@ -201,21 +201,30 @@ export function normalizeTransactionFilters(
   accounts: AccountRecord[],
   categories: CategoryRecord[]
 ) {
+  const categoryGroups = categoryOptionGroups(categories);
+  const requestedCategoryIds = categoryIdsFromFilterValue(filters.categoryId);
+  const categoryGroup = filters.categoryId === "all"
+    ? null
+    : categoryGroups.find((group) => (
+      group.value === filters.categoryId ||
+      requestedCategoryIds.some((id) => group.categoryIds.includes(id))
+    ));
+
   return deriveState({
     ...filters,
     accountId: filters.accountId === "all" || accounts.some((account) => account.id === filters.accountId)
       ? filters.accountId
       : "all",
-    categoryId: filters.categoryId === "all" || categories.some((category) => category.id === filters.categoryId)
-      ? filters.categoryId
-      : "all"
+    categoryId: filters.categoryId === "all"
+      ? "all"
+      : categoryGroup?.value ?? "all"
   });
 }
 
 export function toTransactionListFilters(filters: TransactionFilterState): TransactionListFilters {
   return {
     accountIds: filters.accountId === "all" ? undefined : [filters.accountId],
-    categoryIds: filters.categoryId === "all" ? undefined : [filters.categoryId],
+    categoryIds: filters.categoryId === "all" ? undefined : categoryIdsFromFilterValue(filters.categoryId),
     intent: filters.intent,
     reviewReason: filters.reviewReason,
     reviewStatus: filters.reviewStatus,

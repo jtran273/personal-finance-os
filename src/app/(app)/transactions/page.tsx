@@ -47,7 +47,10 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
         listCategories(context.client, context.userId)
       ]);
       filters = normalizeTransactionFilters(filters, accounts, categories);
-      transactions = await listTransactions(context.client, context.userId, toTransactionListFilters(filters));
+      transactions = await listTransactions(context.client, context.userId, {
+        ...toTransactionListFilters(filters),
+        includeRawContext: false
+      });
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }

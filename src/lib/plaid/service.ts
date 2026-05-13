@@ -32,6 +32,7 @@ import type { TransactionEnrichmentPatch } from "../db/queries";
 import { createAutoReviewTransactionSuggestionService } from "../ai/server";
 import { attachAiSuggestionsToReviewItems } from "../review/ai-suggestions";
 import { evaluateAutoCategorization } from "../review/auto-categorization";
+import { displayCategoryName } from "../finance/classification";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildTransactionReviewItems } from "../review/heuristics";
 import { buildRuleAppliedEnrichment, findMatchingMerchantRule } from "../merchant-rules";
@@ -1334,6 +1335,9 @@ function buildEnrichedTransactionInsert({
   const categoryName = transaction ? getDefaultCategoryName(transaction) : raw.plaid_category ?? "Uncategorized";
   const categoryRows = [...categoryByName.values()];
   const categoryById = new Map(categoryRows.map((row) => [row.id, row]));
+  const matchedCategory = categoryByName.get(categoryName.toLowerCase()) ??
+    categoryByName.get(displayCategoryName(categoryName).toLowerCase()) ??
+    null;
   const matchedRule = findMatchingMerchantRule(merchantRules, raw);
   const ruleEnrichment = matchedRule
     ? buildRuleAppliedEnrichment(matchedRule, raw, categoryById)
@@ -1342,8 +1346,8 @@ function buildEnrichedTransactionInsert({
   return {
     account_id: raw.account_id,
     amount: raw.amount,
-    category_id: ruleEnrichment?.categoryId ?? categoryByName.get(categoryName.toLowerCase())?.id ?? null,
-    category_name: ruleEnrichment?.categoryName ?? categoryName,
+    category_id: ruleEnrichment?.categoryId ?? matchedCategory?.id ?? null,
+    category_name: ruleEnrichment?.categoryName ?? matchedCategory?.name ?? categoryName,
     confidence: ruleEnrichment?.confidence ?? (transaction ? getDefaultConfidence(transaction) : 0.95),
     date: raw.date,
     intent: ruleEnrichment?.intent ?? (transaction ? getDefaultIntent(transaction) : "personal"),

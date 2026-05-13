@@ -31,6 +31,18 @@ function getLegacyTokenKey() {
   );
 }
 
+function tryGetLegacyTokenKey() {
+  try {
+    return getLegacyTokenKey();
+  } catch {
+    // Legacy key requires Plaid credential config. If credentials are not
+    // configured (e.g. an explicit token key was rotated in and Plaid
+    // creds are temporarily missing during startup), skip the legacy key
+    // rather than failing the entire decrypt path.
+    return null;
+  }
+}
+
 function getExplicitTokenKey() {
   const explicitKey = process.env.PLAID_TOKEN_ENCRYPTION_KEY?.trim();
 
@@ -55,9 +67,18 @@ function getPrimaryTokenKey() {
 
 function getDecryptionKeys() {
   const primary = getExplicitTokenKey();
-  const legacy = getLegacyTokenKey();
+  const legacy = tryGetLegacyTokenKey();
 
-  if (!primary) return [legacy];
+  if (!primary) {
+    if (!legacy) {
+      throw new PlaidConfigurationError(
+        "PLAID_TOKEN_ENCRYPTION_KEY is required when Plaid credentials are not configured."
+      );
+    }
+    return [legacy];
+  }
+
+  if (!legacy) return [primary];
 
   return primary.equals(legacy) ? [primary] : [primary, legacy];
 }

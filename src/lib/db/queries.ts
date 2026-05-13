@@ -46,6 +46,7 @@ import {
 } from "../agents/proposals";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
+import { isRecurringReview } from "../review/reasons";
 
 interface QueryError {
   message: string;
@@ -71,6 +72,7 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
   in(column: string, values: readonly unknown[]): FinanceFilterBuilder<Row>;
   gte(column: string, value: string | number): FinanceFilterBuilder<Row>;
   lte(column: string, value: string | number): FinanceFilterBuilder<Row>;
+  neq(column: string, value: unknown): FinanceFilterBuilder<Row>;
   order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FinanceFilterBuilder<Row>;
   limit(count: number): FinanceFilterBuilder<Row>;
   single(): PromiseLike<QueryResult<Row>>;
@@ -120,6 +122,7 @@ export interface TransactionListFilters {
   reviewStatus?: ReviewStatus | "all";
   quality?: TransactionQualityFilter;
   excludeTransfers?: boolean;
+  includeRawContext?: boolean;
   search?: string;
   limit?: number;
   offset?: number;
@@ -456,7 +459,19 @@ function transactionNeedsCategoryCleanup(transaction: TransactionRecord) {
   return transaction.confidence < 0.75 ||
     !transaction.categoryId ||
     transaction.category.toLowerCase() === "uncategorized" ||
-    transaction.reviewItems.some((review) => review.status === "open");
+    transaction.reviewItems.some((review) => review.status === "open" && !isRecurringReview(review.reason));
+}
+
+function transactionMatchesReviewStatus(
+  transaction: TransactionRecord,
+  status: ReviewStatus,
+  reasonFilter: ReviewReason | "all" | undefined
+) {
+  return transaction.reviewItems.some((review) => {
+    if (review.status !== status) return false;
+    if (isRecurringReview(review.reason)) return reasonFilter === review.reason;
+    return true;
+  });
 }
 
 function transactionMatchesQuality(transaction: TransactionRecord, quality: TransactionQualityFilter | undefined) {
@@ -468,10 +483,7 @@ function transactionMatchesQuality(transaction: TransactionRecord, quality: Tran
 
 function requiresHydratedTransactionFiltering(filters: TransactionListFilters) {
   return Boolean(
-    filters.excludeTransfers ||
     filters.search?.trim() ||
-    (filters.reviewReason && filters.reviewReason !== "all") ||
-    (filters.reviewStatus && filters.reviewStatus !== "all") ||
     (filters.quality && filters.quality !== "all")
   );
 }
@@ -494,7 +506,7 @@ export function filterTransactionRecordsForList(
     : searched;
   const reviewFiltered = filters.reviewStatus && filters.reviewStatus !== "all"
     ? transferFiltered.filter((transaction) =>
-      transaction.reviewItems.some((review) => review.status === filters.reviewStatus)
+      transactionMatchesReviewStatus(transaction, filters.reviewStatus as ReviewStatus, filters.reviewReason)
     )
     : transferFiltered;
   const reasonFiltered = filters.reviewReason && filters.reviewReason !== "all"
@@ -518,7 +530,7 @@ function buildTransactionRecord({
   splits
 }: {
   row: EnrichedTransactionRow;
-  raw?: RawTransactionRow;
+  raw?: RawTransactionContextRow;
   account?: AccountRow;
   institution?: InstitutionRow;
   category?: CategoryRow;
@@ -526,7 +538,9 @@ function buildTransactionRecord({
   reimbursements: ReimbursementRecord[];
   splits: TransactionSplitRecord[];
 }): TransactionRecord {
-  const openReview = reviews.find((review) => review.status === "open") ?? null;
+  const openReview = reviews.find((review) => review.status === "open" && !isRecurringReview(review.reason)) ??
+    reviews.find((review) => review.status === "open") ??
+    null;
 
   return {
     id: row.id,
@@ -559,6 +573,19 @@ function buildTransactionRecord({
   };
 }
 
+type RawTransactionContextRow = Pick<
+  RawTransactionRow,
+  "id" | "merchant_name" | "name" | "plaid_category" | "plaid_transaction_id"
+>;
+
+const RAW_TRANSACTION_CONTEXT_COLUMNS = [
+  "id",
+  "merchant_name",
+  "name",
+  "plaid_category",
+  "plaid_transaction_id"
+].join(",");
+
 export function transactionMatchesSearch(transaction: TransactionRecord, search: string) {
   const needle = normalizeSearchText(search);
   if (!needle) return true;
@@ -569,12 +596,14 @@ export function transactionMatchesSearch(transaction: TransactionRecord, search:
 async function hydrateTransactions(
   client: FinanceSupabaseClient,
   userId: string,
-  enrichedRows: EnrichedTransactionRow[]
+  enrichedRows: EnrichedTransactionRow[],
+  options: { includeRawContext?: boolean } = {}
 ): Promise<TransactionRecord[]> {
   if (enrichedRows.length === 0) return [];
 
   const transactionIds = enrichedRows.map((row) => row.id);
   const rawIds = unique(enrichedRows.map((row) => row.raw_transaction_id));
+  const includeRawContext = options.includeRawContext ?? true;
 
   const [
     rawResult,
@@ -585,7 +614,13 @@ async function hydrateTransactions(
     reimbursementResult,
     splitResult
   ] = await Promise.all([
-    client.from("raw_transactions").select("*").eq("user_id", userId).in("id", rawIds),
+    includeRawContext
+      ? client
+        .from("raw_transactions")
+        .select(RAW_TRANSACTION_CONTEXT_COLUMNS)
+        .eq("user_id", userId)
+        .in("id", rawIds)
+      : Promise.resolve({ data: [] as RawTransactionContextRow[], error: null }),
     client.from("accounts").select("*").eq("user_id", userId),
     client.from("institutions").select("*").eq("user_id", userId),
     client.from("categories").select("*").eq("user_id", userId),
@@ -626,6 +661,46 @@ async function hydrateTransactions(
       splits: splitsByTransaction.get(row.id) ?? []
     });
   });
+}
+
+async function listReviewTransactionIds(
+  client: FinanceSupabaseClient,
+  userId: string,
+  filters: Pick<TransactionListFilters, "reviewReason" | "reviewStatus">
+) {
+  const statusFilter = filters.reviewStatus && filters.reviewStatus !== "all"
+    ? filters.reviewStatus
+    : null;
+  const reasonFilter = filters.reviewReason && filters.reviewReason !== "all"
+    ? filters.reviewReason
+    : null;
+
+  if (!statusFilter && !reasonFilter) return null;
+
+  async function loadIds(filter: { reason?: ReviewReason; status?: ReviewStatus }) {
+    let query = client
+      .from("review_items")
+      .select("enriched_transaction_id")
+      .eq("user_id", userId);
+
+    if (filter.status) query = query.eq("status", filter.status);
+    if (filter.reason) query = query.eq("reason", filter.reason);
+    if (filter.status && !filter.reason) {
+      query = query.neq("reason", "new-recurring").neq("reason", "recurring-candidate");
+    }
+
+    return new Set(expectData(await query, "List review transaction ids").map((row) => row.enriched_transaction_id));
+  }
+
+  if (statusFilter && reasonFilter) {
+    const [statusIds, reasonIds] = await Promise.all([
+      loadIds({ status: statusFilter }),
+      loadIds({ reason: reasonFilter })
+    ]);
+    return [...statusIds].filter((id) => reasonIds.has(id));
+  }
+
+  return [...await loadIds(statusFilter ? { status: statusFilter } : { reason: reasonFilter! })];
 }
 
 export async function listAccounts(client: FinanceSupabaseClient, userId: string): Promise<AccountRecord[]> {
@@ -798,6 +873,9 @@ export async function listTransactions(
   userId: string,
   filters: TransactionListFilters = {}
 ): Promise<TransactionRecord[]> {
+  const reviewTransactionIds = await listReviewTransactionIds(client, userId, filters);
+  if (reviewTransactionIds && reviewTransactionIds.length === 0) return [];
+
   let query = client
     .from("enriched_transactions")
     .select("*")
@@ -805,6 +883,9 @@ export async function listTransactions(
     .order("date", { ascending: false })
     .order("created_at", { ascending: false });
 
+  if (reviewTransactionIds) {
+    query = query.in("id", reviewTransactionIds);
+  }
   if (filters.accountIds?.length) {
     query = query.in("account_id", filters.accountIds);
   }
@@ -823,13 +904,18 @@ export async function listTransactions(
   if (filters.recurring !== undefined) {
     query = query.eq("is_recurring", filters.recurring);
   }
+  if (filters.excludeTransfers) {
+    query = query.neq("intent", "transfer");
+  }
   const rowLimit = transactionRowLimit(filters);
   if (rowLimit !== undefined) {
     query = query.limit(rowLimit);
   }
 
   const enrichedRows = expectData(await query, "List enriched transactions");
-  const hydrated = await hydrateTransactions(client, userId, enrichedRows);
+  const hydrated = await hydrateTransactions(client, userId, enrichedRows, {
+    includeRawContext: filters.search?.trim() ? true : filters.includeRawContext
+  });
   return filterTransactionRecordsForList(hydrated, filters);
 }
 

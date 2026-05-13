@@ -16,6 +16,7 @@ import {
 } from "@/lib/finance/balances";
 import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { buildCategoryBreakdownsByMonth } from "@/lib/finance/spending";
+import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
 
 export const dynamic = "force-dynamic";
 
@@ -48,8 +49,9 @@ export default async function DashboardPage() {
         accountIds.length > 0
           ? listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 5000 })
           : Promise.resolve([]),
-        listTransactions(context.client, context.userId, { limit: 5000 })
+        listTransactions(context.client, context.userId, { includeRawContext: false, limit: 5000 })
       ]);
+      accounts = await applyManualInvestmentValuations(accounts);
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -57,6 +59,7 @@ export default async function DashboardPage() {
 
   const now = new Date();
   const asOfDate = now.toISOString().slice(0, 10);
+  const plaidSyncAccounts = accounts.filter((account) => account.type === "depository" || account.type === "credit");
   const totals = calculateAccountTotals(accounts);
   const trendOptions = {
     asOfDate,
@@ -118,7 +121,7 @@ export default async function DashboardPage() {
       isSignedIn={isSignedIn}
       liabilitiesDue={liabilitiesDue}
       snapshotCount={snapshots.length}
-      syncSummary={summarizeSync(accounts)}
+      syncSummary={summarizeSync(plaidSyncAccounts)}
       totals={totals}
     />
   );

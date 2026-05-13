@@ -1,5 +1,6 @@
 "use client";
 
+import type { AiSuggestionProviderKind } from "@/lib/ai/types";
 import { Check, Sparkles, X } from "lucide-react";
 import { useActionState } from "react";
 import {
@@ -11,15 +12,34 @@ import {
 import styles from "./review.module.css";
 
 interface ReviewItemActionsProps {
+  aiProviderKind: AiSuggestionProviderKind;
   canAccept: boolean;
   canDismiss: boolean;
   canSuggest: boolean;
+  hasSuggestion: boolean;
   reviewItemId: string;
 }
 
 const initialState: ReviewActionState = {};
 
-export function ReviewItemActions({ canAccept, canDismiss, canSuggest, reviewItemId }: ReviewItemActionsProps) {
+function suggestionButtonLabel(providerKind: AiSuggestionProviderKind, hasSuggestion: boolean, suggesting: boolean) {
+  if (providerKind === "openai") {
+    if (suggesting) return hasSuggestion ? "Refreshing OpenAI..." : "Asking OpenAI...";
+    return hasSuggestion ? "Refresh OpenAI suggestion" : "Ask OpenAI";
+  }
+
+  if (suggesting) return hasSuggestion ? "Refreshing rules..." : "Checking rules...";
+  return hasSuggestion ? "Refresh rules suggestion" : "Run rules suggestion";
+}
+
+export function ReviewItemActions({
+  aiProviderKind,
+  canAccept,
+  canDismiss,
+  canSuggest,
+  hasSuggestion,
+  reviewItemId
+}: ReviewItemActionsProps) {
   const [acceptState, acceptAction, accepting] = useActionState(acceptReviewSuggestionAction, initialState);
   const [dismissState, dismissAction, dismissing] = useActionState(dismissReviewItemAction, initialState);
   const [suggestState, suggestAction, suggesting] = useActionState(generateReviewSuggestionAction, initialState);
@@ -32,7 +52,7 @@ export function ReviewItemActions({ canAccept, canDismiss, canSuggest, reviewIte
           <input name="reviewItemId" type="hidden" value={reviewItemId} />
           <button className={styles.secondaryButton} disabled={busy} type="submit">
             <Sparkles size={14} aria-hidden />
-            {suggesting ? "Suggesting..." : "Suggest with AI"}
+            {suggestionButtonLabel(aiProviderKind, hasSuggestion, suggesting)}
           </button>
         </form>
       ) : null}
@@ -58,14 +78,14 @@ export function ReviewItemActions({ canAccept, canDismiss, canSuggest, reviewIte
         </form>
       ) : null}
 
-      {acceptState.error || dismissState.error || suggestState.error ? (
-        <div className={styles.inlineError} role="alert">
+      {!busy && (acceptState.error || dismissState.error || suggestState.error) ? (
+        <div className={styles.inlineError} role="alert" aria-live="assertive">
           {acceptState.error ?? dismissState.error ?? suggestState.error}
         </div>
       ) : null}
 
-      {suggestState.message ? (
-        <div className={styles.inlineSuccess} role="status">
+      {!busy && suggestState.message && !suggestState.error ? (
+        <div className={styles.inlineSuccess} role="status" aria-live="polite">
           {suggestState.message}
         </div>
       ) : null}

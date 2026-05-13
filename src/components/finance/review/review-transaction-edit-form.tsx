@@ -1,6 +1,16 @@
 "use client";
 
-import type { CategoryRecord, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { CategoryRecord, TransactionRecord } from "@/lib/db";
+import {
+  categoryOptionGroups,
+  displayTransactionIntent,
+  isTransferCategoryName,
+  primaryCategoryIdForId,
+  transactionTagFromIntent,
+  userTransactionIntentOptions,
+  type TransactionTag,
+  type UserTransactionIntent
+} from "@/lib/finance/classification";
 import { Pencil, Save, X } from "lucide-react";
 import { type ChangeEvent, useActionState, useState } from "react";
 import { editReviewTransactionAction, type ReviewActionState } from "./actions";
@@ -12,14 +22,6 @@ interface ReviewTransactionEditFormProps {
   transaction: TransactionRecord;
 }
 
-const intentOptions: Array<{ label: string; value: TransactionIntent }> = [
-  { value: "personal", label: "Personal" },
-  { value: "business", label: "Business" },
-  { value: "shared", label: "Shared" },
-  { value: "reimbursable", label: "Reimbursable" },
-  { value: "transfer", label: "Transfer" }
-];
-
 const initialState: ReviewActionState = {};
 
 export function ReviewTransactionEditForm({
@@ -29,8 +31,14 @@ export function ReviewTransactionEditForm({
 }: ReviewTransactionEditFormProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [state, formAction, isPending] = useActionState(editReviewTransactionAction, initialState);
-  const [categoryId, setCategoryId] = useState(transaction.categoryId ?? "none");
+  const categoryGroups = categoryOptionGroups(categories);
+  const initialCategoryId = isTransferCategoryName(transaction.category)
+    ? "none"
+    : primaryCategoryIdForId(transaction.categoryId, categories) ?? "none";
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
   const [categoryName, setCategoryName] = useState(transaction.category);
+  const [baseIntent, setBaseIntent] = useState<UserTransactionIntent>(displayTransactionIntent(transaction.intent));
+  const [tag, setTag] = useState<TransactionTag>(transactionTagFromIntent(transaction.intent));
 
   function handleCategoryChange(event: ChangeEvent<HTMLSelectElement>) {
     const nextCategoryId = event.target.value;
@@ -38,6 +46,10 @@ export function ReviewTransactionEditForm({
 
     const category = categories.find((item) => item.id === nextCategoryId);
     if (category) setCategoryName(category.name);
+  }
+
+  function handleTagToggle(nextTag: Exclude<TransactionTag, "none">, checked: boolean) {
+    setTag(checked ? nextTag : "none");
   }
 
   if (!isOpen) {
@@ -69,36 +81,33 @@ export function ReviewTransactionEditForm({
           <span>Category</span>
           <select className={styles.selectControl} name="categoryId" onChange={handleCategoryChange} value={categoryId}>
             <option value="none">Select category</option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
+            {categoryGroups.map((category) => (
+              <option key={category.primaryCategoryId} value={category.primaryCategoryId}>
+                {category.label}
               </option>
             ))}
           </select>
         </label>
 
-        <label className={styles.field}>
-          <span>Category label</span>
-          <input
-            className={styles.inputControl}
-            maxLength={160}
-            name="categoryName"
-            onChange={(event) => setCategoryName(event.target.value)}
-            required
-            value={categoryName}
-          />
-        </label>
+        <input name="categoryName" type="hidden" value={categoryName} />
 
         <label className={styles.field}>
           <span>Intent</span>
-          <select className={styles.selectControl} defaultValue={transaction.intent} name="intent">
-            {intentOptions.map((option) => (
+          <select
+            className={styles.selectControl}
+            name="baseIntent"
+            onChange={(event) => setBaseIntent(event.target.value as UserTransactionIntent)}
+            value={baseIntent}
+          >
+            {userTransactionIntentOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
             ))}
           </select>
         </label>
+
+        <input name="tag" type="hidden" value={tag} />
 
         <label className={`${styles.field} ${styles.inlineEditNotes}`}>
           <span>Notes</span>
@@ -111,10 +120,32 @@ export function ReviewTransactionEditForm({
           />
         </label>
 
-        <label className={`${styles.checkboxField} ${styles.inlineEditRecurring}`}>
-          <input defaultChecked={transaction.recurring} name="isRecurring" type="checkbox" value="1" />
-          <span>Recurring</span>
-        </label>
+        <div className={styles.inlineEditFlags} aria-label="Transaction flags">
+          <label className={styles.checkboxField}>
+            <input defaultChecked={transaction.recurring} name="isRecurring" type="checkbox" value="1" />
+            <span>Recurring</span>
+          </label>
+          <label className={styles.checkboxField}>
+            <input
+              checked={tag === "reimbursable"}
+              name="isReimbursable"
+              onChange={(event) => handleTagToggle("reimbursable", event.currentTarget.checked)}
+              type="checkbox"
+              value="1"
+            />
+            <span>Reimbursable</span>
+          </label>
+          <label className={styles.checkboxField}>
+            <input
+              checked={tag === "transfer"}
+              name="isTransfer"
+              onChange={(event) => handleTagToggle("transfer", event.currentTarget.checked)}
+              type="checkbox"
+              value="1"
+            />
+            <span>Transfer</span>
+          </label>
+        </div>
       </div>
 
       {state.error ? (

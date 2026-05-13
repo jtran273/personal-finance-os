@@ -1,5 +1,11 @@
 import type { AiSuggestionProviderKind } from "@/lib/ai/types";
-import type { CategoryRecord, ReviewQueueItem, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { CategoryRecord, ReviewQueueItem, TransactionIntent } from "@/lib/db";
+import {
+  displayCategoryName,
+  displayTransactionIntent,
+  transactionTagFromIntent,
+  transactionTagLabel
+} from "@/lib/finance/classification";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
@@ -25,7 +31,7 @@ interface ReviewQueueViewProps {
   isConfigured: boolean;
   isSignedIn: boolean;
   reviewItems: ReviewQueueItem[];
-  transactions: TransactionRecord[];
+  trustedSpending: number;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -68,16 +74,54 @@ function formatConfidence(value: number | null | undefined) {
   return value === null || value === undefined ? "Unknown" : `${Math.round(value * 100)}%`;
 }
 
+function intentDisplay(intent: TransactionIntent) {
+  return intentLabels[displayTransactionIntent(intent)];
+}
+
+function tagDisplay(intent: TransactionIntent | undefined) {
+  if (!intent) return null;
+  const tag = transactionTagFromIntent(intent);
+  return tag === "none" ? null : transactionTagLabel(tag);
+}
+
+function confidenceTone(value: number | null | undefined): "high" | "mid" | "low" | "unknown" {
+  if (value === null || value === undefined) return "unknown";
+  if (value >= 0.8) return "high";
+  if (value >= 0.5) return "mid";
+  return "low";
+}
+
+function ConfidenceBadge({ value }: { value: number | null | undefined }) {
+  const tone = confidenceTone(value);
+  const pct = value === null || value === undefined ? 0 : Math.max(0, Math.min(100, Math.round(value * 100)));
+  const label = formatConfidence(value);
+  return (
+    <span
+      className={`${styles.confidenceBadge} ${styles[`confidence-${tone}`]}`}
+      aria-label={`Confidence ${label}`}
+      title={`Confidence ${label}`}
+    >
+      <span className={styles.confidenceTrack} aria-hidden>
+        <span className={styles.confidenceFill} style={{ width: `${pct}%` }} />
+      </span>
+      <span className={styles.confidenceValue}>{label}</span>
+    </span>
+  );
+}
+
 function ReviewCard({
+  aiProviderKind,
   categories,
   item
 }: {
+  aiProviderKind: AiSuggestionProviderKind;
   categories: CategoryRecord[];
   item: ReviewQueueItem;
 }) {
   const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
   const peerToPeer = isPeerToPeerReview(item.reason);
-  const canAccept = !peerToPeer && hasReviewSuggestionValue(suggestion);
+  const hasSuggestion = hasReviewSuggestionValue(suggestion);
+  const canAccept = !peerToPeer && hasSuggestion;
   const canDismiss = !peerToPeer;
   const canSuggest = !peerToPeer;
 
@@ -96,7 +140,7 @@ function ReviewCard({
           <strong className={item.transaction.amount >= 0 ? styles.positiveAmount : styles.negativeAmount}>
             {formatSignedMoney(item.transaction.amount)}
           </strong>
-          <span>{formatConfidence(item.confidence)} confidence</span>
+          <ConfidenceBadge value={item.confidence} />
         </div>
       </div>
 
@@ -108,19 +152,27 @@ function ReviewCard({
             <span>Venmo, Zelle, Cash App, and PayPal hide the real merchant. Split it into real categories below.</span>
           </div>
         </div>
-      ) : hasReviewSuggestionValue(suggestion) ? (
+      ) : hasSuggestion ? (
         <div className={styles.suggestionGrid}>
           <div className={styles.suggestionColumn}>
-            <span className={styles.columnLabel}>AI suggests</span>
+            <span className={styles.columnLabel}>
+              {aiProviderKind === "openai" ? "Suggestion" : "Rules suggest"}
+            </span>
             <dl className={styles.detailList}>
               <div>
                 <dt>Category</dt>
-                <dd>{suggestion.categoryName ?? item.transaction.category}</dd>
+                <dd>{displayCategoryName(suggestion.categoryName ?? item.transaction.category)}</dd>
               </div>
               <div>
                 <dt>Intent</dt>
-                <dd>{suggestion.intent ? intentLabels[suggestion.intent] : intentLabels[item.transaction.intent]}</dd>
+                <dd>{intentDisplay(suggestion.intent ?? item.transaction.intent)}</dd>
               </div>
+              {tagDisplay(suggestion.intent ?? item.transaction.intent) ? (
+                <div>
+                  <dt>Tag</dt>
+                  <dd>{tagDisplay(suggestion.intent ?? item.transaction.intent)}</dd>
+                </div>
+              ) : null}
               {suggestion.reason ? (
                 <div>
                   <dt>Why</dt>
@@ -152,9 +204,11 @@ function ReviewCard({
         ) : (
           <>
             <ReviewItemActions
+              aiProviderKind={aiProviderKind}
               canAccept={canAccept}
               canDismiss={canDismiss}
               canSuggest={canSuggest}
+              hasSuggestion={hasSuggestion}
               reviewItemId={item.id}
             />
             <ReviewTransactionEditForm
@@ -173,8 +227,8 @@ function EmptyQueue() {
   return (
     <div className={styles.emptyState}>
       <CheckCircle2 size={28} aria-hidden />
-      <h2>Nothing needs review</h2>
-      <p>All transactions are auto-categorized. New imports will show up here only when AI is uncertain.</p>
+      <h2>Queue clear — nice.</h2>
+      <p>Every transaction is categorized. New imports only land here when AI is uncertain or a peer-to-peer charge needs explaining.</p>
       <Link className={styles.secondaryButton} href="/transactions">
         Open transactions
         <ArrowRight size={14} aria-hidden />
@@ -191,17 +245,13 @@ export function ReviewQueueView({
   isConfigured,
   isSignedIn,
   reviewItems,
-  transactions
+  trustedSpending
 }: ReviewQueueViewProps) {
   const canShowQueue = isConfigured && isSignedIn && !dataError;
-  const openTransactionIds = new Set(reviewItems.map((item) => item.transaction.id));
   const unresolvedSpending = reviewItems.reduce(
     (sum, item) => sum + transactionSpendingAmount(item.transaction),
     0
   );
-  const trustedSpending = transactions
-    .filter((transaction) => !openTransactionIds.has(transaction.id))
-    .reduce((sum, transaction) => sum + transactionSpendingAmount(transaction), 0);
 
   const peerToPeerItems = reviewItems.filter((item) => isPeerToPeerReview(item.reason));
   const aiItems = reviewItems.filter((item) => !isPeerToPeerReview(item.reason));
@@ -255,9 +305,9 @@ export function ReviewQueueView({
           <Sparkles size={13} aria-hidden />
           {aiProviderKind === "openai"
             ? aiAutoReviewEnabled
-              ? "Automatic OpenAI cleanup is enabled. Suggestions stay advisory and high-confidence cleanup is audit-backed."
-              : "OpenAI is configured, but automatic cleanup is off to save tokens. Use Suggest with AI on only the review items that need it."
-            : "OpenAI is not configured. Review suggestions use deterministic merchant rules only."}
+              ? "OpenAI is configured. Automatic cleanup can run on eligible imports, and suggestions still need review unless high-confidence cleanup is audit-backed."
+              : "OpenAI is configured for manual clicks. Automatic cleanup is off, so this page does not call OpenAI until you ask for a suggestion."
+            : "OpenAI is not configured. Suggestions come from deterministic merchant and Plaid rules only."}
         </div>
       ) : null}
 
@@ -266,28 +316,32 @@ export function ReviewQueueView({
       ) : (
         <div className={styles.reviewGroups}>
           {peerToPeerItems.length > 0 ? (
-            <section className={styles.reviewGroup}>
+            <section className={styles.reviewGroup} aria-labelledby="review-group-p2p">
               <div className={styles.reviewGroupHead}>
-                <h2>Peer-to-peer ({peerToPeerItems.length})</h2>
+                <h2 id="review-group-p2p">
+                  <TriangleAlert size={16} aria-hidden /> Peer-to-peer ({peerToPeerItems.length})
+                </h2>
                 <span>Venmo, Zelle, Cash App and PayPal hide the real merchant — explain each one.</span>
               </div>
               <div className={styles.cardStack}>
                 {peerToPeerItems.map((item) => (
-                  <ReviewCard categories={categories} item={item} key={item.id} />
+                  <ReviewCard aiProviderKind={aiProviderKind} categories={categories} item={item} key={item.id} />
                 ))}
               </div>
             </section>
           ) : null}
 
           {aiItems.length > 0 ? (
-            <section className={styles.reviewGroup}>
+            <section className={styles.reviewGroup} aria-labelledby="review-group-ai">
               <div className={styles.reviewGroupHead}>
-                <h2>AI was uncertain ({aiItems.length})</h2>
-                <span>Generate a suggestion when useful, accept a ready one, or relabel manually.</span>
+                <h2 id="review-group-ai">
+                  <Sparkles size={16} aria-hidden /> Needs categorization ({aiItems.length})
+                </h2>
+                <span>These rows were flagged by Plaid/app rules. Ask for a suggestion, accept a ready one, or relabel manually.</span>
               </div>
               <div className={styles.cardStack}>
                 {aiItems.map((item) => (
-                  <ReviewCard categories={categories} item={item} key={item.id} />
+                  <ReviewCard aiProviderKind={aiProviderKind} categories={categories} item={item} key={item.id} />
                 ))}
               </div>
             </section>

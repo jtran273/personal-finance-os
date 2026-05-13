@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isDemoModeEnabled } from "./auth";
+import { NextResponse } from "next/server";
+import { DEMO_COOKIE_MAX_AGE_SECONDS, DEMO_COOKIE_NAME, isDemoModeEnabled, setDemoCookie } from "./auth";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalVercelEnv = process.env.VERCEL_ENV;
@@ -60,4 +61,17 @@ test("ENABLE_DEMO_MODE explicitly controls demo mode", () => {
 
   mutableEnv.ENABLE_DEMO_MODE = "false";
   assert.equal(isDemoModeEnabled(), false);
+});
+
+test("demo cookie persists for a longer same-device session", () => {
+  const response = NextResponse.next();
+
+  setDemoCookie(response);
+
+  const setCookie = response.headers.get("set-cookie");
+  assert.equal(DEMO_COOKIE_MAX_AGE_SECONDS, 60 * 60 * 24 * 30);
+  assert.match(setCookie ?? "", new RegExp(`^${DEMO_COOKIE_NAME}=1;`));
+  assert.match(setCookie ?? "", new RegExp(`Max-Age=${DEMO_COOKIE_MAX_AGE_SECONDS}`));
+  assert.match(setCookie ?? "", /HttpOnly/);
+  assert.match(setCookie ?? "", /SameSite=lax/i);
 });

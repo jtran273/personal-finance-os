@@ -25,11 +25,12 @@ export function RecurringCandidateActions({
   const [confirmState, confirmAction, confirming] = useActionState(confirmRecurringCandidateAction, initialState);
   const [dismissState, dismissAction, dismissing] = useActionState(dismissRecurringCandidateAction, initialState);
   const disabled = confirming || dismissing;
-  const message = confirmState.message ?? dismissState.message;
-  const error = confirmState.error ?? dismissState.error;
+  // Prefer the most recent action's outcome; suppress messages while pending to avoid stale toasts.
+  const message = disabled ? undefined : (dismissState.message ?? confirmState.message);
+  const error = disabled ? undefined : (dismissState.error ?? confirmState.error);
 
   return (
-    <div className={styles.actionForms}>
+    <div className={styles.actionForms} data-recurring-resolving={disabled ? "true" : undefined}>
       <form action={confirmAction}>
         {candidateId ? <input name="candidateId" type="hidden" value={candidateId} /> : null}
         {recurringExpenseId ? <input name="recurringExpenseId" type="hidden" value={recurringExpenseId} /> : null}
@@ -59,12 +60,12 @@ export function RecurringCandidateActions({
       </form>
 
       {error ? (
-        <div className={styles.inlineError} role="alert">
+        <div className={styles.inlineError} role="alert" aria-live="assertive">
           {error}
         </div>
       ) : null}
-      {message ? (
-        <div className={styles.inlineMessage} role="status">
+      {message && !error ? (
+        <div className={styles.inlineMessage} role="status" aria-live="polite">
           {message}
         </div>
       ) : null}

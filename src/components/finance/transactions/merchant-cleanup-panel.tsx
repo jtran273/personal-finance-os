@@ -2,9 +2,9 @@
 
 import { applyMerchantCleanupAction, type MerchantCleanupActionState } from "@/app/(app)/transactions/actions";
 import type { CategoryRecord } from "@/lib/db";
+import { categoryOptionGroups, userTransactionIntentOptions } from "@/lib/finance/classification";
 import { WandSparkles } from "lucide-react";
 import { useActionState, useState } from "react";
-import { transactionIntentOptions } from "./filters";
 import styles from "./transactions.module.css";
 
 interface MerchantCleanupPanelProps {
@@ -19,7 +19,8 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
   const hasDefaultQuery = defaultQuery.trim().length > 0;
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
   const expanded = expandedOverride ?? (hasDefaultQuery || Boolean(state.error || state.message));
-  const defaultCategory = categories.find((category) => category.name === "Food / Restaurants") ?? categories[0] ?? null;
+  const categoryGroups = categoryOptionGroups(categories);
+  const defaultCategory = categoryGroups.find((category) => category.label === "Food") ?? categoryGroups[0] ?? null;
 
   return (
     <section className={expanded ? styles.cleanupPanel : `${styles.cleanupPanel} ${styles.cleanupCollapsed}`} aria-label="Merchant cleanup">
@@ -53,10 +54,10 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
 
             <label className={styles.field}>
               <span>Category</span>
-              <select className={styles.selectControl} defaultValue={defaultCategory?.id ?? "none"} name="categoryId" required>
+              <select className={styles.selectControl} defaultValue={defaultCategory?.primaryCategoryId ?? "none"} name="categoryId" required>
                 <option value="none">Choose category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>{category.name}</option>
+                {categoryGroups.map((category) => (
+                  <option key={category.primaryCategoryId} value={category.primaryCategoryId}>{category.label}</option>
                 ))}
               </select>
             </label>
@@ -64,11 +65,9 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
             <label className={styles.field}>
               <span>Intent</span>
               <select className={styles.selectControl} defaultValue="personal" name="intent">
-                {transactionIntentOptions
-                  .filter((option) => option.value !== "all")
-                  .map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
+                {userTransactionIntentOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
 
@@ -77,7 +76,7 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
               <span>Save rule</span>
             </label>
 
-            <button className={styles.primaryButton} disabled={isPending || categories.length === 0} type="submit">
+            <button className={styles.primaryButton} disabled={isPending || categoryGroups.length === 0} type="submit">
               <WandSparkles size={14} aria-hidden />
               {isPending ? "Applying..." : "Apply cleanup"}
             </button>

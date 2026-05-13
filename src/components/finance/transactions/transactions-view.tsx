@@ -1,6 +1,7 @@
 import type { AccountRecord, CategoryRecord, TransactionRecord } from "@/lib/db";
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { buildReimbursementReportingSummary } from "@/lib/finance/reimbursements";
+import { isRecurringReview } from "@/lib/review/reasons";
 import { Database, Filter, HandCoins, Hourglass, Inbox, type LucideIcon } from "lucide-react";
 import type { TransactionFilterState } from "./filters";
 import { MerchantCleanupPanel } from "./merchant-cleanup-panel";
@@ -35,7 +36,9 @@ function summarize(transactions: TransactionRecord[]) {
       summary.spending += transactionSpendingAmount(transaction);
 
       if (transaction.status === "pending") summary.pending += 1;
-      if (transaction.reviewItems.some((review) => review.status === "open")) summary.needsReview += 1;
+      if (transaction.reviewItems.some((review) => review.status === "open" && !isRecurringReview(review.reason))) {
+        summary.needsReview += 1;
+      }
 
       return summary;
     },

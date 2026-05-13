@@ -1,18 +1,23 @@
 import type { AccountRecord, BalanceSnapshotRecord } from "@/lib/db";
-import type { AccountBalanceTotals, AccountGroup, SyncSummary } from "@/lib/finance/balances";
 import { accountSyncState, balanceContribution } from "@/lib/finance/balances";
-import { Clock3, CreditCard, Database, Landmark, TriangleAlert, type LucideIcon } from "lucide-react";
+import { PlaidConnectionPanel } from "@/components/plaid/plaid-connection-panel";
+import {
+  CheckCircle2,
+  CircleSlash,
+  Clock3,
+  Database,
+  Landmark,
+  TriangleAlert,
+  type LucideIcon
+} from "lucide-react";
 import styles from "./accounts.module.css";
 
 interface AccountsViewProps {
   accounts: AccountRecord[];
   dataError?: string;
-  groups: AccountGroup[];
   isConfigured: boolean;
   isSignedIn: boolean;
   snapshots: BalanceSnapshotRecord[];
-  syncSummary: SyncSummary;
-  totals: AccountBalanceTotals;
 }
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
@@ -56,6 +61,68 @@ function formatRelativeTime(value: string | null) {
   return syncedAt.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
 }
 
+function formatAbsoluteSync(value: string | null) {
+  if (!value) return "No sync recorded";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No sync recorded";
+  return date.toLocaleString("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function formatAccountKind(account: AccountRecord) {
+  return account.subtype ?? account.type;
+}
+
+const SYNC_BADGE_META: Record<
+  "fresh" | "stale" | "never" | "valuation",
+  { icon: LucideIcon; label: string; tooltip: string }
+> = {
+  fresh: {
+    icon: CheckCircle2,
+    label: "Synced",
+    tooltip: "Synced within the last 24 hours"
+  },
+  never: {
+    icon: CircleSlash,
+    label: "No sync yet",
+    tooltip: "This account has not synced yet"
+  },
+  stale: {
+    icon: Clock3,
+    label: "Synced",
+    tooltip: "Last successful sync was more than 24 hours ago"
+  },
+  valuation: {
+    icon: Database,
+    label: "Balance only",
+    tooltip: "Investment and retirement accounts use saved balance snapshots here; holdings are not priced live in this app yet."
+  }
+};
+
+function isValuationOnlyAccount(account: AccountRecord) {
+  return account.type === "investment" || account.type === "retirement";
+}
+
+function groupAccountsByInstitution(accounts: readonly AccountRecord[]) {
+  const groups = new Map<string, { institutionName: string; accounts: AccountRecord[]; total: number }>();
+  for (const account of accounts) {
+    const key = account.institutionName || "Other";
+    let group = groups.get(key);
+    if (!group) {
+      group = { accounts: [], institutionName: key, total: 0 };
+      groups.set(key, group);
+    }
+    group.accounts.push(account);
+    group.total += balanceContribution(account);
+  }
+  return Array.from(groups.values()).sort((a, b) => a.institutionName.localeCompare(b.institutionName));
+}
+
 function latestSnapshotsByAccount(snapshots: readonly BalanceSnapshotRecord[]) {
   return snapshots.reduce((map, snapshot) => {
     const current = map.get(snapshot.accountId);
@@ -66,38 +133,6 @@ function latestSnapshotsByAccount(snapshots: readonly BalanceSnapshotRecord[]) {
   }, new Map<string, BalanceSnapshotRecord>());
 }
 
-function syncSummaryText(summary: SyncSummary) {
-  if (summary.status === "empty") return "No account rows";
-  if (summary.status === "never") return "No account has synced";
-  if (summary.status === "stale") return `${summary.staleCount + summary.neverSyncedCount} accounts need sync`;
-  return "All accounts fresh";
-}
-
-function SummaryCard({
-  detail,
-  icon: Icon,
-  label,
-  tone,
-  value
-}: {
-  detail: string;
-  icon: LucideIcon;
-  label: string;
-  tone?: "negative" | "positive";
-  value: string;
-}) {
-  return (
-    <div className={styles.summaryCard}>
-      <span className={styles.summaryLabel}>
-        <Icon size={13} aria-hidden />
-        {label}
-      </span>
-      <strong className={tone ? styles[tone] : undefined}>{value}</strong>
-      <span>{detail}</span>
-    </div>
-  );
-}
-
 function AccountCard({
   account,
   latestSnapshot
@@ -106,45 +141,58 @@ function AccountCard({
   latestSnapshot?: BalanceSnapshotRecord;
 }) {
   const displayBalance = balanceContribution(account);
-  const syncState = accountSyncState(account);
+  const valuationOnly = isValuationOnlyAccount(account);
+  const syncState = valuationOnly ? "valuation" : accountSyncState(account);
+  const badgeMeta = SYNC_BADGE_META[syncState];
+  const BadgeIcon = badgeMeta.icon;
+  const displayName = account.name || account.institutionName;
   const utilization = account.type === "credit" && account.creditLimit
     ? Math.min(100, Math.round((Math.abs(displayBalance) / account.creditLimit) * 100))
     : null;
-  const secondaryLabel = account.type === "credit" ? "Limit" : "Type";
-  const secondaryValue = account.type === "credit"
-    ? account.creditLimit === null ? "Not reported" : formatMoney(account.creditLimit)
-    : account.subtype ?? account.type;
+  const needsRepair = !account.isActive;
+  const absoluteSync = formatAbsoluteSync(account.lastSyncedAt);
+  const availableLabel = valuationOnly ? "Reported value" : account.type === "credit" ? "Available credit" : "Available";
+  const availableValue = account.availableBalance === null ? "Not reported" : formatMoney(account.availableBalance);
+  const limitValue = account.creditLimit === null ? "Not reported" : formatMoney(account.creditLimit);
 
   return (
-    <article className={`${styles.accountCard} ${!account.isActive ? styles.inactiveCard : ""}`}>
+    <article className={`${styles.accountCard} ${needsRepair ? styles.inactiveCard : ""}`}>
       <div className={styles.accountHead}>
-        <span className={styles.institution}>
-          <span className={styles.swatch} style={{ background: account.color ?? "var(--ink)" }} />
-          {account.institutionName}
-        </span>
-        <span className={`${styles.syncPill} ${styles[`sync-${syncState}`]}`}>
-          {syncState}
+        <div className={styles.accountTitle}>
+          <span className={styles.swatch} style={{ background: account.color ?? "var(--ink)" }} aria-hidden />
+          <div className={styles.accountName}>
+            <strong>{displayName}</strong>
+            <span>{account.mask ? `•••• ${account.mask}` : formatAccountKind(account)}</span>
+          </div>
+        </div>
+        <span
+          className={`${styles.syncPill} ${styles[`sync-${syncState}`]}`}
+          title={badgeMeta.tooltip}
+        >
+          <BadgeIcon size={11} aria-hidden />
+          <span aria-hidden>{badgeMeta.label}</span>
+          <span className="sr-only">{badgeMeta.label}</span>
         </span>
       </div>
 
-      <div className={styles.accountName}>
-        <strong>{account.name}</strong>
-        <span>{account.mask ? `...${account.mask}` : account.subtype ?? account.type}</span>
-      </div>
-
-      <div className={`${styles.balance} ${displayBalance < 0 ? styles.negative : ""}`}>
-        {formatMoney(displayBalance)}
+      <div className={styles.balanceRow}>
+        <div className={`${styles.balance} tabular-nums ${displayBalance < 0 ? styles.negative : ""}`}>
+          {formatMoney(displayBalance)}
+        </div>
+        <span className={styles.kind}>{formatAccountKind(account)}</span>
       </div>
 
       <div className={styles.detailGrid}>
         <div>
-          <span>{account.type === "credit" ? "Available credit" : "Available"}</span>
-          <strong>{account.availableBalance === null ? "Not reported" : formatMoney(account.availableBalance)}</strong>
+          <span>{availableLabel}</span>
+          <strong className="tabular-nums">{availableValue}</strong>
         </div>
-        <div>
-          <span>{secondaryLabel}</span>
-          <strong>{secondaryValue}</strong>
-        </div>
+        {account.type === "credit" ? (
+          <div>
+            <span>Limit</span>
+            <strong className="tabular-nums">{limitValue}</strong>
+          </div>
+        ) : null}
       </div>
 
       {utilization !== null ? (
@@ -152,14 +200,21 @@ function AccountCard({
           <div>
             <span style={{ width: `${utilization}%` }} />
           </div>
-          <strong>{utilization}% utilized</strong>
+          <strong className="tabular-nums">{utilization}% utilized</strong>
+        </div>
+      ) : null}
+
+      {needsRepair ? (
+        <div className={styles.repairBanner} role="status">
+          <TriangleAlert size={13} aria-hidden />
+          <span>Needs repair in Settings</span>
         </div>
       ) : null}
 
       <div className={styles.accountFoot}>
-        <span>
-          <Clock3 size={12} aria-hidden />
-          {formatRelativeTime(account.lastSyncedAt)}
+        <span title={absoluteSync}>
+          {valuationOnly ? <Database size={12} aria-hidden /> : <Clock3 size={12} aria-hidden />}
+          {valuationOnly ? "Balance only" : formatRelativeTime(account.lastSyncedAt)}
         </span>
         <span>
           {latestSnapshot ? `Snapshot ${formatDate(latestSnapshot.snapshotDate)}` : "No snapshot"}
@@ -172,12 +227,9 @@ function AccountCard({
 export function AccountsView({
   accounts,
   dataError,
-  groups,
   isConfigured,
   isSignedIn,
-  snapshots,
-  syncSummary,
-  totals
+  snapshots
 }: AccountsViewProps) {
   const latestSnapshotByAccount = latestSnapshotsByAccount(snapshots);
 
@@ -201,6 +253,8 @@ export function AccountsView({
         </div>
       ) : null}
 
+      <PlaidConnectionPanel />
+
       {accounts.length === 0 ? (
         <div className={styles.emptyState}>
           <Database size={24} aria-hidden />
@@ -211,36 +265,26 @@ export function AccountsView({
         </div>
       ) : (
         <>
-          <section className={styles.summaryGrid} aria-label="Account summary">
-            <SummaryCard detail={`${accounts.length} persisted account rows`} icon={Landmark} label="Net worth" value={formatMoney(totals.netWorth)} />
-            <SummaryCard detail="Cash plus investments and retirement" icon={Database} label="Assets" value={formatMoney(totals.assets)} />
-            <SummaryCard detail="Credit cards reduce net worth" icon={CreditCard} label="Liabilities" tone="negative" value={formatMoney(totals.liabilities)} />
-            <SummaryCard
-              detail={formatRelativeTime(syncSummary.latestSyncedAt)}
-              icon={syncSummary.status === "stale" || syncSummary.status === "never" ? TriangleAlert : Clock3}
-              label="Sync"
-              tone={syncSummary.status === "fresh" ? "positive" : undefined}
-              value={syncSummaryText(syncSummary)}
-            />
-          </section>
-
-          <div className={styles.groupStack}>
-            {groups.map((group) => (
-              <section className={styles.group} key={group.key}>
-                <div className={styles.groupHead}>
-                  <div>
-                    <span className={styles.eyebrow}>{group.accounts.length} accounts</span>
-                    <h2>{group.label}</h2>
-                    <p>{group.description}</p>
+          <section className={styles.accountListSection} aria-label="Connected accounts">
+            <div className={styles.accountListHead}>
+              <h2>Connected accounts</h2>
+              <span>{accounts.length.toLocaleString("en-US")} connected</span>
+            </div>
+            <div className={styles.groupStack}>
+              {groupAccountsByInstitution(accounts).map((group) => (
+                <div className={styles.institutionGroup} key={group.institutionName}>
+                  <div className={styles.institutionHead}>
+                    <h3>
+                      <Landmark size={13} aria-hidden />
+                      {group.institutionName}
+                      <span className={styles.institutionCount}>
+                        {group.accounts.length} {group.accounts.length === 1 ? "account" : "accounts"}
+                      </span>
+                    </h3>
+                    <strong className={`tabular-nums ${group.total < 0 ? styles.negative : ""}`.trim()}>
+                      {formatMoney(group.total)}
+                    </strong>
                   </div>
-                  <strong className={`${styles.groupTotal} ${group.total < 0 ? styles.negative : ""}`}>
-                    {formatMoney(group.total)}
-                  </strong>
-                </div>
-
-                {group.accounts.length === 0 ? (
-                  <div className={styles.emptyMini}>No persisted rows in this group.</div>
-                ) : (
                   <div className={styles.accountGrid}>
                     {group.accounts.map((account) => (
                       <AccountCard
@@ -250,10 +294,10 @@ export function AccountsView({
                       />
                     ))}
                   </div>
-                )}
-              </section>
-            ))}
-          </div>
+                </div>
+              ))}
+            </div>
+          </section>
         </>
       )}
     </div>

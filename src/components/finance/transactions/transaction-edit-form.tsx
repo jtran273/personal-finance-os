@@ -1,6 +1,16 @@
 "use client";
 
-import type { CategoryRecord, TransactionIntent, TransactionRecord } from "@/lib/db";
+import type { CategoryRecord, TransactionRecord } from "@/lib/db";
+import {
+  categoryOptionGroups,
+  displayTransactionIntent,
+  isTransferCategoryName,
+  primaryCategoryIdForId,
+  transactionTagFromIntent,
+  userTransactionIntentOptions,
+  type TransactionTag,
+  type UserTransactionIntent
+} from "@/lib/finance/classification";
 import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { type ChangeEvent, useActionState, useState } from "react";
@@ -12,13 +22,7 @@ interface TransactionEditFormProps {
   transaction: TransactionRecord;
 }
 
-const intentOptions: Array<{ label: string; value: TransactionIntent }> = [
-  { value: "personal", label: "Personal" },
-  { value: "business", label: "Business" },
-  { value: "shared", label: "Shared" },
-  { value: "reimbursable", label: "Reimbursable" },
-  { value: "transfer", label: "Transfer" }
-];
+const NEW_CATEGORY_VALUE = "__new_category__";
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
@@ -45,19 +49,21 @@ function reviewStatusLabel(transaction: TransactionRecord) {
 
 export function TransactionEditForm({ categories, transaction }: TransactionEditFormProps) {
   const [state, formAction, isPending] = useActionState(updateTransactionAction, initialState);
-  const [categoryId, setCategoryId] = useState(transaction.categoryId ?? "none");
-  const [categoryName, setCategoryName] = useState(transaction.category);
+  const categoryGroups = categoryOptionGroups(categories);
+  const initialCategoryId = isTransferCategoryName(transaction.category)
+    ? "none"
+    : primaryCategoryIdForId(transaction.categoryId, categories) ?? "none";
+  const [categoryId, setCategoryId] = useState(initialCategoryId);
+  const [baseIntent, setBaseIntent] = useState<UserTransactionIntent>(displayTransactionIntent(transaction.intent));
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [tag, setTag] = useState<TransactionTag>(transactionTagFromIntent(transaction.intent));
 
   function handleCategoryChange(event: ChangeEvent<HTMLSelectElement>) {
-    const nextCategoryId = event.target.value;
-    setCategoryId(nextCategoryId);
+    setCategoryId(event.target.value);
+  }
 
-    const category = categories.find((item) => item.id === nextCategoryId);
-    if (category) {
-      setCategoryName(category.name);
-    } else if (!categoryName.trim()) {
-      setCategoryName("Uncategorized");
-    }
+  function handleTagToggle(nextTag: Exclude<TransactionTag, "none">, checked: boolean) {
+    setTag(checked ? nextTag : "none");
   }
 
   return (
@@ -92,36 +98,53 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
             <span>Category</span>
             <select className={styles.selectControl} name="categoryId" onChange={handleCategoryChange} value={categoryId}>
               <option value="none">No linked category</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
+              {categoryGroups.map((category) => (
+                <option key={category.primaryCategoryId} value={category.primaryCategoryId}>
+                  {category.label}
                 </option>
               ))}
+              <option value={NEW_CATEGORY_VALUE}>Create new category...</option>
             </select>
           </label>
 
-          <label className={styles.field}>
-            <span>Category / subcategory</span>
+          {categoryId === NEW_CATEGORY_VALUE ? (
+            <label className={styles.field}>
+              <span>New category</span>
+              <input
+                className={styles.inputControl}
+                maxLength={160}
+                name="newCategoryName"
+                onChange={(event) => setNewCategoryName(event.target.value)}
+                placeholder="Gifts"
+                required
+                value={newCategoryName}
+              />
+            </label>
+          ) : (
             <input
-              className={styles.inputControl}
-              maxLength={160}
-              name="categoryName"
-              onChange={(event) => setCategoryName(event.target.value)}
-              required
-              value={categoryName}
+              name="newCategoryName"
+              type="hidden"
+              value=""
             />
-          </label>
+          )}
 
           <label className={styles.field}>
             <span>Intent</span>
-            <select className={styles.selectControl} defaultValue={transaction.intent} name="intent">
-              {intentOptions.map((option) => (
+            <select
+              className={styles.selectControl}
+              name="baseIntent"
+              onChange={(event) => setBaseIntent(event.target.value as UserTransactionIntent)}
+              value={baseIntent}
+            >
+              {userTransactionIntentOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
           </label>
+
+          <input name="tag" type="hidden" value={tag} />
 
           <label className={`${styles.field} ${styles.fullField}`}>
             <span>Notes</span>
@@ -134,10 +157,32 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
             />
           </label>
 
-          <label className={`${styles.checkboxField} ${styles.switchField}`}>
-            <input defaultChecked={transaction.recurring} name="isRecurring" type="checkbox" value="1" />
-            <span>Recurring</span>
-          </label>
+          <div className={styles.flagGroup} aria-label="Transaction flags">
+            <label className={styles.checkboxField}>
+              <input defaultChecked={transaction.recurring} name="isRecurring" type="checkbox" value="1" />
+              <span>Recurring</span>
+            </label>
+            <label className={styles.checkboxField}>
+              <input
+                checked={tag === "reimbursable"}
+                name="isReimbursable"
+                onChange={(event) => handleTagToggle("reimbursable", event.currentTarget.checked)}
+                type="checkbox"
+                value="1"
+              />
+              <span>Reimbursable</span>
+            </label>
+            <label className={styles.checkboxField}>
+              <input
+                checked={tag === "transfer"}
+                name="isTransfer"
+                onChange={(event) => handleTagToggle("transfer", event.currentTarget.checked)}
+                type="checkbox"
+                value="1"
+              />
+              <span>Transfer</span>
+            </label>
+          </div>
 
           {state.error ? (
             <div className={styles.formError} role="alert">

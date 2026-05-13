@@ -46,14 +46,6 @@
   margin-top: 4px;
 }
 
-.summaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.summaryCard,
-.group,
 .accountCard {
   min-width: 0;
   border: 1px solid var(--line);
@@ -61,66 +53,34 @@
   background: var(--surface);
 }
 
-.summaryCard {
-  display: flex;
-  min-height: 112px;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 16px;
-}
-
-.summaryLabel,
-.eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-}
-
-.summaryCard strong {
-  overflow-wrap: anywhere;
-  font-family: inherit;
-  font-size: 30px;
-  font-weight: 400;
-  line-height: 1;
-}
-
-.summaryCard > span:last-child {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.positive {
-  color: var(--pos);
-}
-
 .negative {
   color: var(--neg);
 }
 
 .groupStack {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  align-items: start;
+  gap: 14px;
 }
 
-.group {
-  padding: 20px;
-}
-
-.groupHead {
+.accountListSection {
   display: flex;
   min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  margin-bottom: 14px;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.groupHead h2 {
-  margin: 5px 0 4px;
+.accountListHead {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.accountListHead h2 {
+  margin: 0;
   overflow-wrap: anywhere;
   font-family: inherit;
   font-size: 25px;
@@ -128,32 +88,24 @@
   line-height: 1;
 }
 
-.groupHead p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 12.5px;
-}
-
-.groupTotal {
+.accountListHead span {
   flex: 0 0 auto;
-  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .accountGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 270px), 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 8px;
 }
 
 .accountCard {
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
 }
 
 .inactiveCard {
@@ -161,35 +113,32 @@
 }
 
 .accountHead,
+.accountTitle,
 .accountName,
 .accountFoot,
+.balanceRow,
 .utilization,
 .detailGrid {
   min-width: 0;
 }
 
 .accountHead,
+.accountTitle,
 .accountFoot,
+.balanceRow,
 .utilization {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
 }
 
-.institution {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 12px;
+.accountHead {
+  justify-content: space-between;
+  min-height: 25px;
 }
 
-.institution {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.accountTitle {
+  flex: 1;
 }
 
 .swatch {
@@ -200,12 +149,20 @@
 }
 
 .syncPill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 3px 8px;
   color: var(--muted);
   font-size: 11px;
   text-transform: capitalize;
+}
+
+.syncPill:hover {
+  filter: brightness(0.98);
 }
 
 .sync-fresh {
@@ -222,13 +179,11 @@
 }
 
 .accountName {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
+  flex: 1;
 }
 
 .accountName strong {
+  display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -236,29 +191,50 @@
 }
 
 .accountName span {
-  flex: 0 0 auto;
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.balanceRow {
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .balance {
+  min-width: 0;
   overflow-wrap: anywhere;
   font-family: inherit;
-  font-size: 31px;
+  font-size: 26px;
   line-height: 1;
+}
+
+.kind {
+  flex: 0 1 auto;
+  overflow: hidden;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  text-transform: capitalize;
+  white-space: nowrap;
 }
 
 .detailGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 12px;
 }
 
 .detailGrid div {
-  border: 1px solid var(--line-2);
-  border-radius: 7px;
-  padding: 9px;
-  background: var(--surface-2);
+  min-width: 0;
 }
 
 .detailGrid span,
@@ -270,7 +246,7 @@
 
 .detailGrid strong {
   display: block;
-  margin-top: 3px;
+  margin-top: 1px;
   overflow-wrap: anywhere;
   font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
   font-size: 12px;
@@ -299,8 +275,9 @@
 
 .accountFoot {
   border-top: 1px solid var(--line-2);
-  padding-top: 11px;
+  padding-top: 9px;
   flex-wrap: wrap;
+  justify-content: space-between;
 }
 
 .accountFoot span:first-child {
@@ -309,38 +286,87 @@
   gap: 5px;
 }
 
-.emptyMini {
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  padding: 18px;
-  color: var(--muted);
-  font-size: 13px;
-  text-align: center;
+.repairBanner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in oklab, var(--neg) 30%, var(--line));
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: color-mix(in oklab, var(--neg) 7%, var(--surface));
+  color: var(--neg);
+  font-size: 12px;
 }
 
-@media (max-width: 1100px) {
-  .summaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+.repairBanner > svg {
+  flex: 0 0 auto;
+}
+
+.repairBanner span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.institutionGroup {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 12px;
+}
+
+.institutionHead {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.institutionHead h3 {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.institutionCount {
+  flex: 0 0 auto;
+  margin-left: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 400;
+}
+
+.institutionHead strong {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 @media (max-width: 760px) {
-  .summaryGrid,
   .accountGrid {
     grid-template-columns: 1fr;
   }
 
-  .group,
+  .accountListHead {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
   .accountCard {
     padding: 16px;
-  }
-
-  .groupHead {
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .groupTotal {
-    font-size: 16px;
   }
 }

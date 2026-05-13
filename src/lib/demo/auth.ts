@@ -3,7 +3,7 @@ import type { NextRequest, NextResponse } from "next/server";
 
 export const DEMO_COOKIE_NAME = "ledger_demo";
 const DEMO_COOKIE_VALUE = "1";
-const DEMO_MAX_AGE_SECONDS = 60 * 60 * 24;
+export const DEMO_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 
 export function isDemoModeEnabled() {
   const flag = process.env.ENABLE_DEMO_MODE?.trim().toLowerCase();
@@ -29,7 +29,7 @@ export async function isDemoMode() {
 export function setDemoCookie(response: NextResponse) {
   response.cookies.set(DEMO_COOKIE_NAME, DEMO_COOKIE_VALUE, {
     httpOnly: true,
-    maxAge: DEMO_MAX_AGE_SECONDS,
+    maxAge: DEMO_COOKIE_MAX_AGE_SECONDS,
     path: "/",
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production"

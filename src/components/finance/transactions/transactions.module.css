@@ -9,19 +9,19 @@
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
 }
 
 .summaryCard {
   display: flex;
   min-width: 0;
-  min-height: 112px;
+  min-height: 96px;
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
-  padding: 16px;
+  padding: 14px;
   background: var(--surface);
   outline: none;
 }
@@ -29,7 +29,7 @@
 .summaryCard strong {
   overflow-wrap: anywhere;
   font-family: inherit;
-  font-size: 30px;
+  font-size: 27px;
   font-weight: 400;
   line-height: 1;
 }
@@ -232,15 +232,18 @@
 .secondaryButton {
   display: inline-flex;
   min-width: 0;
+  max-width: 100%;
   min-height: 36px;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  overflow: hidden;
   border-radius: 7px;
   padding: 0 12px;
   font-size: 13px;
   font-weight: 450;
   text-decoration: none;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -293,6 +296,7 @@
 }
 
 .tableShell {
+  container-type: inline-size;
   max-width: 100%;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -308,7 +312,7 @@
 
 .table {
   width: 100%;
-  min-width: 1324px;
+  min-width: 860px;
   border-collapse: separate;
   border-spacing: 0;
   table-layout: fixed;
@@ -319,7 +323,7 @@
   top: 0;
   z-index: 1;
   border-bottom: 1px solid var(--line);
-  padding: 10px 14px;
+  padding: 8px 12px;
   background: var(--surface-2);
   color: var(--muted);
   font-size: 10.5px;
@@ -329,35 +333,31 @@
 }
 
 .table th:nth-child(1) {
-  width: 116px;
-}
-
-.table th:nth-child(2) {
-  width: 280px;
-}
-
-.table th:nth-child(3) {
-  width: 220px;
-}
-
-.table th:nth-child(4) {
-  width: 190px;
-}
-
-.table th:nth-child(5) {
-  width: 124px;
-}
-
-.table th:nth-child(6) {
-  width: 180px;
-}
-
-.table th:nth-child(8) {
   width: 92px;
 }
 
+.table th:nth-child(2) {
+  width: 300px;
+}
+
+.table th:nth-child(3) {
+  width: 156px;
+}
+
+.table th:nth-child(4) {
+  width: 184px;
+}
+
+.table th:nth-child(5) {
+  width: 116px;
+}
+
+.table th:nth-child(6) {
+  width: 88px;
+}
+
 .amountHead {
-  width: 120px;
+  width: 116px;
 }
 
 .table th.amountHead {
@@ -366,7 +366,7 @@
 
 .table td {
   border-bottom: 1px solid var(--line-2);
-  padding: 13px 14px;
+  padding: 10px 12px;
   vertical-align: middle;
 }
 
@@ -413,6 +413,39 @@
 .merchantName {
   color: var(--ink);
   font-weight: 500;
+}
+
+.merchantName {
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.accountCell span:first-child {
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  text-transform: none;
+}
+
+.categoryHint {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.categoryActionLink {
+  width: fit-content;
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.categoryActionLink:hover,
+.categoryActionLink:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .dateCell span:last-child,
@@ -480,23 +513,32 @@
   text-underline-offset: 2px;
 }
 
+.statusTags {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
 .badge {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  min-width: 0;
+  height: 20px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  padding: 0;
+  padding: 0 6px;
   background: var(--surface-2);
   color: var(--ink-2);
+  font-size: 10px;
+  font-weight: 600;
   line-height: 1;
   white-space: nowrap;
 }
 
-.badgeText,
 .intentText {
   position: absolute;
   width: 1px;
@@ -506,6 +548,12 @@
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.badgeText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pendingBadge {
@@ -561,7 +609,7 @@
   min-width: 0;
   flex-wrap: wrap;
   gap: 4px;
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .qualityBadge {
@@ -645,7 +693,7 @@
 }
 
 .negativeAmount {
-  color: var(--ink);
+  color: var(--neg);
 }
 
 .limitNotice {
@@ -673,12 +721,84 @@
   font-size: 13px;
 }
 
+.emptyActions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: center;
+}
+
+.emptyResetLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 12px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.emptyResetLink:hover {
+  border-color: color-mix(in oklab, var(--ink) 22%, var(--line));
+}
+
+.emptyResetLink:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent, var(--ink)) 60%, transparent);
+  outline-offset: 2px;
+}
+
+.activeChips {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.activeChipsLabel {
+  color: var(--muted);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.activeChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: 11.5px;
+  font-weight: 500;
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.activeChip:hover {
+  border-color: color-mix(in oklab, var(--neg) 38%, var(--line));
+  background: color-mix(in oklab, var(--neg) 6%, var(--surface-2));
+}
+
+.activeChip:focus-visible {
+  outline: 2px solid color-mix(in oklab, var(--accent, var(--ink)) 60%, transparent);
+  outline-offset: 2px;
+}
+
 .iconLink {
   display: inline-flex;
+  max-width: 100%;
   min-height: 30px;
   align-items: center;
   justify-content: center;
   gap: 5px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 0 9px;
@@ -686,6 +806,7 @@
   font-size: 12px;
   font-weight: 500;
   text-decoration: none;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -737,15 +858,22 @@
 }
 
 .fullField,
-.switchField,
+.flagGroup,
 .formError,
 .buttonRow,
 .readonlyGrid {
   grid-column: 1 / -1;
 }
 
-.switchField {
-  width: fit-content;
+.flagGroup {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flagGroup .checkboxField {
+  align-self: auto;
 }
 
 .formError {
@@ -894,12 +1022,16 @@
 
 @media (max-width: 600px) {
   .summaryCard {
-    min-height: 96px;
-    padding: 14px;
+    min-height: 78px;
+    padding: 12px;
   }
 
   .summaryCard strong {
-    font-size: 25px;
+    font-size: 22px;
+  }
+
+  .summaryDetail {
+    font-size: 11.5px;
   }
 
   .filters,
@@ -937,7 +1069,6 @@
   }
 
   .secondaryLine,
-  .primaryLine span,
   .noteLine,
   .reimbursementLine {
     overflow: visible;
@@ -980,7 +1111,7 @@
   }
 }
 
-@media (max-width: 900px) {
+@container (max-width: 1080px) {
   .tableScroll {
     overflow-x: visible;
   }
@@ -1008,7 +1139,7 @@
   }
 
   .table tr {
-    overflow: hidden;
+    overflow: visible;
     border: 1px solid var(--line);
     border-radius: 8px;
     background: var(--surface);
@@ -1117,22 +1248,32 @@
     grid-row: 2;
   }
 
-  .table td[data-label="Quality"],
-  .table td[data-label="Account"],
-  .table td[data-label="Intent"],
-  .table td[data-label="Review"] {
+  .table td[data-label="Category"] {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
+  .table td[data-label="Account"] {
     display: none;
   }
 
   .table td[data-label="Amount"] {
     grid-column: 2;
     grid-row: 1;
+    min-width: 0;
+    max-width: 42vw;
+    overflow: hidden;
     text-align: right;
+    text-overflow: ellipsis;
   }
 
   .table td[data-label="Edit"] {
     grid-column: 1 / -1;
-    grid-row: 3;
+    grid-row: 4;
+  }
+
+  .table td[data-label="Edit"] .iconLink {
+    width: 100%;
   }
 }
 
@@ -1144,7 +1285,7 @@
   }
 }
 
-@media (min-width: 901px) {
+@media (min-width: 1320px) {
   .summaryGrid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;

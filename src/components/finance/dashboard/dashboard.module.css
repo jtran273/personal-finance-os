@@ -46,6 +46,11 @@
   margin-top: 4px;
 }
 
+.emptyState .textLink {
+  display: inline-block;
+  margin-top: 10px;
+}
+
 .hero {
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -521,8 +526,24 @@
   text-decoration: none;
 }
 
-.transactionRow:hover {
+.transactionRow:hover,
+.transactionRow:focus-visible {
   border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+  outline: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .transactionRow {
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .transactionRow:hover,
+  .transactionRow:focus-visible {
+    transform: translateX(2px);
+  }
 }
 
 .transactionRow div {
@@ -586,6 +607,11 @@
   .activityHead {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .syncActionPanel {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .hero h2 {
@@ -905,6 +931,76 @@
   color: var(--pos);
 }
 
+.syncActionPanel {
+  display: inline-flex;
+  flex: 0 0 auto;
+  width: fit-content;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px;
+  background: var(--surface);
+  align-self: flex-start;
+}
+
+.syncActionMeta {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.syncActionMeta strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.syncActionStatus {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.syncActionLink {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: var(--ink);
+  color: var(--bg);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.syncActionLink:hover,
+.syncActionLink:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+.syncActionLink:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
 @media (max-width: 600px) {
   .liabilityRowMain {
     flex-direction: column;
@@ -914,6 +1010,15 @@
   .liabilityRowAmount {
     align-items: flex-start;
     text-align: left;
+  }
+
+  .syncActionPanel {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .syncActionLink {
+    width: auto;
   }
 }
 
@@ -1159,7 +1264,8 @@
   .hero,
   .activityPanel,
   .categoryPanel,
-  .liabilityPanel {
+  .liabilityPanel,
+  .syncActionPanel {
     animation: panel-mount var(--dur-slow) var(--ease-standard) both;
   }
 
@@ -1181,7 +1287,8 @@
   .categoryRangeControls button,
   .categoryMonthButton,
   .categoryRow,
-  .liabilityRow {
+  .liabilityRow,
+  .syncActionLink {
     transition:
       background-color var(--dur-fast) var(--ease-standard),
       border-color var(--dur-fast) var(--ease-standard),
@@ -1195,6 +1302,12 @@
   .categoryRow:focus-visible,
   .liabilityRow:hover {
     transform: translateY(-1px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

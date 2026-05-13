@@ -70,7 +70,14 @@ function dueLabel(date: string | null) {
 
 function needsTrackedAttention(expense: RecurringExpenseRecord) {
   const dueIn = daysUntil(expense.nextDueDate);
+  // Includes overdue active bills (dueIn < 0), upcoming within 3 days, new, and pending.
   return expense.status === "pending" || expense.isNew || (dueIn !== null && dueIn <= 3);
+}
+
+function isOverdue(expense: RecurringExpenseRecord) {
+  if (expense.status !== "active") return false;
+  const dueIn = daysUntil(expense.nextDueDate);
+  return dueIn !== null && dueIn < 0;
 }
 
 function candidateReason(candidate: RecurringCandidate) {
@@ -84,7 +91,7 @@ function candidateReason(candidate: RecurringCandidate) {
 }
 
 function statusLabel(status: RecurringExpenseRecord["status"]) {
-  if (status === "pending") return "Needs review";
+  if (status === "pending") return "Confirm";
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
@@ -148,13 +155,20 @@ function TrackedTable({
             const candidate = candidateByRecurringId.get(expense.id);
             const isActionable = expense.status === "pending" || expense.isNew;
             const attention = needsTrackedAttention(expense);
+            const overdue = isOverdue(expense);
 
             return (
-              <div className={styles.tableRow} key={expense.id}>
+              <div className={`${styles.tableRow} ${overdue ? styles.overdueRow : ""}`} key={expense.id}>
                 <div className={styles.primaryCell}>
                   <strong>{expense.merchant}</strong>
                   <span>{expense.accountName ?? "Connected account"} - last {formatDate(expense.lastChargeDate)}</span>
-                  {attention ? <span className={styles.attentionText}>{dueLabel(expense.nextDueDate)}</span> : null}
+                  {overdue ? (
+                    <span className={styles.overdueBadge} role="status">
+                      <BadgeAlert size={12} aria-hidden /> Missed payment - {dueLabel(expense.nextDueDate)}
+                    </span>
+                  ) : attention ? (
+                    <span className={styles.attentionText}>{dueLabel(expense.nextDueDate)}</span>
+                  ) : null}
                   {isActionable ? (
                     <RecurringCandidateActions
                       candidateId={candidate?.id}
@@ -349,7 +363,7 @@ export function RecurringView({
           tone="trusted"
         />
         <SummaryCard
-          detail="Needs attention"
+          detail="To confirm"
           icon={BadgeAlert}
           value={needsAttention.toLocaleString("en-US")}
           tone={needsAttention > 0 ? "warn" : undefined}

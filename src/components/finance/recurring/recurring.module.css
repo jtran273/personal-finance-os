@@ -218,6 +218,27 @@
   color: var(--warn) !important;
 }
 
+.overdueRow {
+  background: color-mix(in oklab, var(--neg) 5%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--neg);
+}
+
+.overdueBadge {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--neg) 12%, var(--surface));
+  color: var(--neg) !important;
+  font-size: 11px !important;
+  font-weight: 600;
+  white-space: nowrap;
+  align-self: flex-start;
+  width: fit-content;
+}
+
 .nextDue {
   display: block;
   color: var(--ink);

@@ -440,6 +440,24 @@ export interface AccountRecord {
   color: string | null;
   isActive: boolean;
   lastSyncedAt: string | null;
+  manualValuation?: ManualInvestmentValuationRecord;
+}
+
+export interface ManualInvestmentValuationRecord {
+  accountId: string;
+  asOf: string;
+  cash: number;
+  holdings: ManualInvestmentHoldingRecord[];
+  source: "manual_holdings";
+  staleSymbols: string[];
+  totalValue: number;
+}
+
+export interface ManualInvestmentHoldingRecord {
+  symbol: string;
+  shares: number;
+  price: number;
+  value: number;
 }
 
 export interface CategoryRecord {

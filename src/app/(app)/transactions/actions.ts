@@ -10,6 +10,7 @@ import {
   recordAuditEvent,
   unlinkReimbursementReceivedTransaction,
   updateTransactionEnrichment,
+  upsertCategory,
   upsertMerchantRule,
   type CategoryRecord,
   type EnrichedTransactionRow,
@@ -19,6 +20,14 @@ import {
   type TransactionIntent
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import {
+  displayTransactionIntent,
+  isTransferCategoryName,
+  transactionIntentFromUi,
+  transactionTagFromIntent,
+  type TransactionTag,
+  type UserTransactionIntent
+} from "@/lib/finance/classification";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export interface TransactionEditActionState {
@@ -42,6 +51,9 @@ const transactionIntents = new Set<TransactionIntent>([
   "reimbursable",
   "transfer"
 ]);
+const userTransactionIntents = new Set<UserTransactionIntent>(["personal", "business"]);
+const transactionTags = new Set<TransactionTag>(["none", "reimbursable", "transfer"]);
+const NEW_CATEGORY_VALUE = "__new_category__";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -73,6 +85,21 @@ function cleanOptionalUuid(value: FormDataEntryValue | null) {
   const text = cleanString(value, 80);
   if (!text || text === "none") return null;
   return uuidPattern.test(text) ? text : undefined;
+}
+
+function requestedTagFromForm(formData: FormData, fallback: TransactionTag = "none") {
+  const checkboxTags = [
+    formData.get("isReimbursable") === "1" ? "reimbursable" : null,
+    formData.get("isTransfer") === "1" ? "transfer" : null
+  ].filter((tag): tag is Exclude<TransactionTag, "none"> => tag !== null);
+
+  if (checkboxTags.length > 1) return { error: "Choose Reimbursable or Transfer, not both." };
+  const checkboxTag = checkboxTags[0];
+  if (checkboxTag) return { tag: checkboxTag };
+
+  const requestedTag = (cleanString(formData.get("tag"), 24) || fallback) as TransactionTag;
+  if (!transactionTags.has(requestedTag)) return { error: "Choose a valid transaction flag." };
+  return { tag: requestedTag };
 }
 
 function getSelectedCategory(categories: CategoryRecord[], categoryId: string | null) {
@@ -187,8 +214,13 @@ export async function applyMerchantCleanupAction(
       return { error: "Enter at least 2 searchable merchant characters." };
     }
 
-    const requestedIntent = cleanString(formData.get("intent"), 24) as TransactionIntent;
-    if (!transactionIntents.has(requestedIntent)) return { error: "Choose a valid intent." };
+    const requestedBaseIntent = cleanString(formData.get("baseIntent") ?? formData.get("intent"), 24) as UserTransactionIntent;
+    if (!userTransactionIntents.has(requestedBaseIntent)) return { error: "Choose Personal or Business." };
+
+    const tagResult = requestedTagFromForm(formData);
+    if ("error" in tagResult) return { error: tagResult.error };
+
+    const requestedIntent = transactionIntentFromUi(requestedBaseIntent, tagResult.tag);
 
     const context = await getFinanceServerContext();
     if (!context.client) return { error: "Supabase is not configured." };
@@ -391,11 +423,19 @@ export async function updateTransactionAction(
     const merchantName = cleanString(formData.get("merchantName"), 160);
     if (!merchantName) return { error: "Merchant is required." };
 
-    const categoryId = cleanOptionalUuid(formData.get("categoryId"));
+    const rawCategoryId = cleanString(formData.get("categoryId"), 80);
+    const wantsNewCategory = rawCategoryId === NEW_CATEGORY_VALUE;
+    let categoryId = wantsNewCategory ? null : cleanOptionalUuid(formData.get("categoryId"));
     if (categoryId === undefined) return { error: "Choose a valid category." };
 
-    const requestedIntent = cleanString(formData.get("intent"), 24) as TransactionIntent;
-    if (!transactionIntents.has(requestedIntent)) return { error: "Choose a valid intent." };
+    const legacyIntent = cleanString(formData.get("intent"), 24) as TransactionIntent;
+    const requestedBaseIntent = (cleanString(formData.get("baseIntent"), 24) || displayTransactionIntent(legacyIntent)) as UserTransactionIntent;
+    if (!userTransactionIntents.has(requestedBaseIntent)) return { error: "Choose Personal or Business." };
+
+    const tagResult = requestedTagFromForm(formData, transactionTagFromIntent(legacyIntent));
+    if ("error" in tagResult) return { error: tagResult.error };
+
+    const requestedIntent = transactionIntentFromUi(requestedBaseIntent, tagResult.tag);
 
     const supabase = await createSupabaseServerClient();
     if (!supabase) return { error: "Supabase is not configured." };
@@ -416,12 +456,19 @@ export async function updateTransactionAction(
 
     if (!before) return { error: "Transaction was not found." };
 
-    const selectedCategory = getSelectedCategory(categories, categoryId);
+    let selectedCategory = getSelectedCategory(categories, categoryId);
+    if (wantsNewCategory) {
+      const newCategoryName = cleanString(formData.get("newCategoryName"), 160);
+      if (!newCategoryName) return { error: "Name the new category." };
+      if (isTransferCategoryName(newCategoryName)) return { error: "Transfer is a tag, not a category." };
+
+      selectedCategory = categories.find((category) => category.name.toLowerCase() === newCategoryName.toLowerCase()) ??
+        await upsertCategory(financeClient, user.id, { name: newCategoryName });
+      categoryId = selectedCategory.id;
+    }
     if (categoryId && !selectedCategory) return { error: "Choose one of your categories." };
 
-    const categoryName = cleanString(formData.get("categoryName"), 160) ||
-      selectedCategory?.name ||
-      "Uncategorized";
+    const categoryName = selectedCategory?.name ?? "Uncategorized";
     const note = cleanString(formData.get("note"), 1000);
     const isRecurring = formData.get("isRecurring") === "1";
     const afterSnapshot = {

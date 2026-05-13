@@ -6,7 +6,7 @@ import {
   type BalanceSnapshotRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
-import { calculateAccountTotals, groupAccounts, summarizeSync } from "@/lib/finance/balances";
+import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +33,7 @@ export default async function AccountsPage() {
       snapshots = accountIds.length > 0
         ? await listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 500 })
         : [];
+      accounts = await applyManualInvestmentValuations(accounts);
     } catch (loadError) {
       dataError = errorMessage(loadError);
     }
@@ -42,12 +43,9 @@ export default async function AccountsPage() {
     <AccountsView
       accounts={accounts}
       dataError={dataError}
-      groups={groupAccounts(accounts)}
       isConfigured={isConfigured}
       isSignedIn={isSignedIn}
       snapshots={snapshots}
-      syncSummary={summarizeSync(accounts)}
-      totals={calculateAccountTotals(accounts)}
     />
   );
 }

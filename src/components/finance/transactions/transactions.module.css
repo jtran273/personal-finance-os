@@ -1136,15 +1136,17 @@
 }
 
 @media (min-width: 721px) {
-  .summaryGrid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 8px;
-  }
-
   .filters {
     position: sticky;
     top: 0;
     z-index: 8;
+  }
+}
+
+@media (min-width: 901px) {
+  .summaryGrid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .summaryCard {

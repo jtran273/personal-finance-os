@@ -35,13 +35,42 @@ async function enableDemoMode(context: BrowserContext, baseURL: string) {
 }
 
 async function expectNoPageOverflow(page: Page) {
-  const metrics = await page.evaluate(() => ({
-    bodyScrollWidth: document.body.scrollWidth,
-    clientWidth: document.documentElement.clientWidth,
-    documentScrollWidth: document.documentElement.scrollWidth
-  }));
+  const metrics = await page.evaluate(() => {
+    const offenders = Array.from(document.querySelectorAll("body *"))
+      .map((element) => {
+        const rect = element.getBoundingClientRect();
+        const className = typeof element.className === "string" ? element.className : "";
 
-  expect(Math.max(metrics.bodyScrollWidth, metrics.documentScrollWidth)).toBeLessThanOrEqual(metrics.clientWidth + 1);
+        return {
+          className: className.slice(0, 120),
+          clientWidth: element.clientWidth,
+          id: element.id,
+          left: Math.round(rect.left),
+          right: Math.round(rect.right),
+          scrollWidth: element.scrollWidth,
+          tag: element.tagName.toLowerCase(),
+          text: (element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 80)
+        };
+      })
+      .filter((element) => (
+        element.left < -1 ||
+        element.right > window.innerWidth + 1 ||
+        element.scrollWidth > element.clientWidth + 1
+      ))
+      .slice(0, 8);
+
+    return {
+      bodyScrollWidth: document.body.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
+      offenders
+    };
+  });
+
+  expect(
+    Math.max(metrics.bodyScrollWidth, metrics.documentScrollWidth),
+    `Page overflow metrics: ${JSON.stringify(metrics, null, 2)}`
+  ).toBeLessThanOrEqual(metrics.clientWidth + 1);
 }
 
 async function expectNoSensitiveFinanceText(page: Page) {

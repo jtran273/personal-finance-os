@@ -7,6 +7,7 @@ import {
   Clock3,
   Database,
   Landmark,
+  TrendingUp,
   TriangleAlert,
   type LucideIcon
 } from "lucide-react";
@@ -79,13 +80,18 @@ function formatAccountKind(account: AccountRecord) {
 }
 
 const SYNC_BADGE_META: Record<
-  "fresh" | "stale" | "never" | "valuation",
+  "fresh" | "market" | "stale" | "never" | "valuation",
   { icon: LucideIcon; label: string; tooltip: string }
 > = {
   fresh: {
     icon: CheckCircle2,
     label: "Synced",
     tooltip: "Synced within the last 24 hours"
+  },
+  market: {
+    icon: TrendingUp,
+    label: "Market estimate",
+    tooltip: "Manual holdings priced from a recent market quote"
   },
   never: {
     icon: CircleSlash,
@@ -100,7 +106,7 @@ const SYNC_BADGE_META: Record<
   valuation: {
     icon: Database,
     label: "Balance only",
-    tooltip: "Investment and retirement accounts use saved balance snapshots here; holdings are not priced live in this app yet."
+    tooltip: "Investment and retirement accounts use saved balance snapshots unless manual holdings are configured."
   }
 };
 
@@ -133,6 +139,15 @@ function latestSnapshotsByAccount(snapshots: readonly BalanceSnapshotRecord[]) {
   }, new Map<string, BalanceSnapshotRecord>());
 }
 
+function formatHoldingSummary(account: AccountRecord) {
+  const valuation = account.manualValuation;
+  if (!valuation) return null;
+
+  const symbols = valuation.holdings.map((holding) => `${holding.symbol} ${holding.shares.toLocaleString("en-US")} sh`);
+  const stale = valuation.staleSymbols.length > 0 ? `; ${valuation.staleSymbols.join(", ")} not priced` : "";
+  return `${symbols.join(", ")}${stale}`;
+}
+
 function AccountCard({
   account,
   latestSnapshot
@@ -142,7 +157,8 @@ function AccountCard({
 }) {
   const displayBalance = balanceContribution(account);
   const valuationOnly = isValuationOnlyAccount(account);
-  const syncState = valuationOnly ? "valuation" : accountSyncState(account);
+  const marketValuation = account.manualValuation;
+  const syncState = marketValuation ? "market" : valuationOnly ? "valuation" : accountSyncState(account);
   const badgeMeta = SYNC_BADGE_META[syncState];
   const BadgeIcon = badgeMeta.icon;
   const displayName = account.name || account.institutionName;
@@ -151,9 +167,10 @@ function AccountCard({
     : null;
   const needsRepair = !account.isActive;
   const absoluteSync = formatAbsoluteSync(account.lastSyncedAt);
-  const availableLabel = valuationOnly ? "Reported value" : account.type === "credit" ? "Available credit" : "Available";
+  const availableLabel = marketValuation ? "Manual cash" : valuationOnly ? "Reported value" : account.type === "credit" ? "Available credit" : "Available";
   const availableValue = account.availableBalance === null ? "Not reported" : formatMoney(account.availableBalance);
   const limitValue = account.creditLimit === null ? "Not reported" : formatMoney(account.creditLimit);
+  const holdingsSummary = formatHoldingSummary(account);
 
   return (
     <article className={`${styles.accountCard} ${needsRepair ? styles.inactiveCard : ""}`}>
@@ -212,12 +229,12 @@ function AccountCard({
       ) : null}
 
       <div className={styles.accountFoot}>
-        <span title={absoluteSync}>
-          {valuationOnly ? <Database size={12} aria-hidden /> : <Clock3 size={12} aria-hidden />}
-          {valuationOnly ? "Balance only" : formatRelativeTime(account.lastSyncedAt)}
+        <span title={marketValuation ? `Quote ${formatAbsoluteSync(marketValuation.asOf)}` : absoluteSync}>
+          {marketValuation ? <TrendingUp size={12} aria-hidden /> : valuationOnly ? <Database size={12} aria-hidden /> : <Clock3 size={12} aria-hidden />}
+          {marketValuation ? `Quote ${formatRelativeTime(marketValuation.asOf)}` : valuationOnly ? "Balance only" : formatRelativeTime(account.lastSyncedAt)}
         </span>
-        <span>
-          {latestSnapshot ? `Snapshot ${formatDate(latestSnapshot.snapshotDate)}` : "No snapshot"}
+        <span title={holdingsSummary ?? undefined}>
+          {holdingsSummary ?? (latestSnapshot ? `Snapshot ${formatDate(latestSnapshot.snapshotDate)}` : "No snapshot")}
         </span>
       </div>
     </article>

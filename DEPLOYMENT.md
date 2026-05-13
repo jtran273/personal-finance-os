@@ -67,6 +67,8 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `OPENCLAW_BRIEFING_CADENCE` | Server only | Optional | `weekly` by default. Set to `daily` only if the scheduled OpenClaw briefing job should refresh a daily proposal key. |
 | `PROACTIVE_SCAN_USER_ID` | Server only | Optional | Supabase user id for the nightly proactive reimbursement scan. Falls back to `OPENCLAW_USER_ID`. |
 | `PROACTIVE_SCAN_MAX_TX` | Server only | Optional | Hard cap on candidate transactions scanned per proactive run. Defaults to `100`. |
+| `FIDELITY_HOLDINGS` | Server only | Optional | Manual Fidelity holdings priced from recent market quotes, for example `AAPL:10,NVDA:2,cash:0`. This only affects investment valuation display; it does not run Plaid or write provider data. |
+| `MANUAL_INVESTMENT_HOLDINGS` | Server only | Optional | JSON array for manual holdings beyond Fidelity. Each entry may include `accountName` or `institutionName`, `cash`, and `holdings` with `symbol` and `shares`. |
 | `VERCEL_URL` | Server | Automatic | Used as a fallback app URL by Vercel deployments. |
 
 Generate `PLAID_TOKEN_ENCRYPTION_KEY`:

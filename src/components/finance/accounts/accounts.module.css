@@ -171,6 +171,12 @@
   color: var(--pos);
 }
 
+.sync-market {
+  border-color: color-mix(in oklab, var(--accent) 24%, var(--line));
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface));
+  color: var(--accent);
+}
+
 .sync-stale,
 .sync-never {
   border-color: color-mix(in oklab, var(--warn) 24%, var(--line));
@@ -284,6 +290,13 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.accountFoot span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .repairBanner {

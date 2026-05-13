@@ -233,6 +233,7 @@ OPENCLAW_USER_ID=
 OPENCLAW_BRIEFING_CADENCE=weekly
 PROACTIVE_SCAN_USER_ID=
 PROACTIVE_SCAN_MAX_TX=100
+FIDELITY_HOLDINGS=AAPL:10,NVDA:2,cash:0
 ```
 
 Generate a production Plaid token encryption key with:
@@ -242,6 +243,8 @@ openssl rand -base64 32
 ```
 
 Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production setup.
+
+`FIDELITY_HOLDINGS` is optional and server-only. Use it for manually tracked Fidelity holdings that Plaid does not sync, with `SYMBOL:shares` pairs plus optional `cash`. When set, dashboard and account totals use recent market quotes for that account and leave Plaid sync untouched.
 
 ## Demo Mode
 

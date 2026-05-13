@@ -18,6 +18,7 @@ type Quote = {
 };
 
 type QuoteProvider = (symbol: string) => Promise<Quote | null>;
+type ManualInvestmentEnv = Partial<Record<"FIDELITY_HOLDINGS" | "MANUAL_INVESTMENT_HOLDINGS", string>>;
 
 const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
 const quoteCache = new Map<string, { expiresAt: number; quote: Quote | null }>();
@@ -94,7 +95,14 @@ function parseFidelityHoldingConfig(value: string): HoldingConfig[] {
     : [];
 }
 
-export function parseManualInvestmentHoldings(env: NodeJS.ProcessEnv = process.env): HoldingConfig[] {
+function defaultManualInvestmentEnv(): ManualInvestmentEnv {
+  return {
+    FIDELITY_HOLDINGS: process.env.FIDELITY_HOLDINGS,
+    MANUAL_INVESTMENT_HOLDINGS: process.env.MANUAL_INVESTMENT_HOLDINGS
+  };
+}
+
+export function parseManualInvestmentHoldings(env: ManualInvestmentEnv = defaultManualInvestmentEnv()): HoldingConfig[] {
   const configs: HoldingConfig[] = [];
   const rawManualConfig = env.MANUAL_INVESTMENT_HOLDINGS?.trim();
   const rawFidelityConfig = env.FIDELITY_HOLDINGS?.trim();
@@ -103,7 +111,7 @@ export function parseManualInvestmentHoldings(env: NodeJS.ProcessEnv = process.e
     try {
       configs.push(...parseJsonHoldingConfig(rawManualConfig));
     } catch {
-      return [];
+      // Ignore malformed manual config and keep any simpler account-specific config available.
     }
   }
 
@@ -175,7 +183,7 @@ async function buildValuation(
 ): Promise<ManualInvestmentValuationRecord | null> {
   const pricedHoldings: ManualInvestmentHoldingRecord[] = [];
   const staleSymbols: string[] = [];
-  let asOf: string | null = null;
+  let asOf = "";
 
   for (const holding of config.holdings) {
     const quote = await quoteProvider(holding.symbol);
@@ -184,7 +192,7 @@ async function buildValuation(
       continue;
     }
 
-    asOf = asOf && asOf > quote.asOf ? asOf : quote.asOf;
+    asOf = quote.asOf > asOf ? quote.asOf : asOf;
     pricedHoldings.push({
       price: roundMoney(quote.price),
       shares: holding.shares,
@@ -201,7 +209,7 @@ async function buildValuation(
 
   return {
     accountId: account.id,
-    asOf: asOf ?? new Date().toISOString(),
+    asOf: asOf || new Date().toISOString(),
     cash,
     holdings: pricedHoldings,
     source: "manual_holdings",
@@ -213,7 +221,7 @@ async function buildValuation(
 export async function applyManualInvestmentValuations(
   accounts: readonly AccountRecord[],
   options: {
-    env?: NodeJS.ProcessEnv;
+    env?: ManualInvestmentEnv;
     quoteProvider?: QuoteProvider;
   } = {}
 ) {

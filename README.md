@@ -91,6 +91,9 @@ Plaid import automatically applies high-confidence, ordinary merchant/category/i
 Users can accept ready suggestions one at a time, generate a suggestion for one review item, dismiss non-peer-to-peer review items, edit a transaction inline, or resolve peer-to-peer payments with structured splits. Manual-only peer-to-peer rows require an explanation and split allocation before leaving review.
 Accepted AI suggestions and review-page manual edits can save reusable merchant rules when the merchant/category/intent decision is specific enough for future imports. Stale missing-category reviews can also be auto-resolved on the review page when the enriched row already has an exact category match.
 Reimbursable split portions and tracked reimbursement records are surfaced separately from owned spending so shared expenses do not inflate trusted budgets.
+Core reimbursement-link helpers can attach a received positive inflow to an existing reimbursement record, preserve partial outstanding balances, mark the received enriched row as reimbursable so it does not inflate income reports, and write audit events for link/unlink decisions without changing raw provider rows. Ledger can also rank likely peer-to-peer reimbursement inflows against outstanding shared or reimbursable expenses, but those deterministic suggestions still require explicit user confirmation before any write.
+
+Ambiguous reimbursement matches should become concise clarification requests only when the answer would materially change accounting and the system has at least medium confidence. The v1 path is seamless bank data plus Ledger/OpenClaw reasoning: Plaid imports activity, Ledger drafts a compact clarification request, and OpenClaw asks one short question only when needed. CSV exports or future manual imports can support optional historical backfill, but they are not required for automated v1 reimbursement clarification.
 
 ### Agent Inbox
 
@@ -126,6 +129,8 @@ The recurring page also builds a deterministic next-30-day cashflow calendar fro
 ### Export
 
 The CSV export uses the current transaction filters and returns enriched finance data plus safe raw Plaid context. It does not export Plaid access tokens, service-role keys, auth headers, or provider secrets.
+
+CSV or manual import workflows are optional backfill tools, not the core reimbursement workflow. The main product path should continue to rely on connected bank data, review-safe AI or heuristic suggestions, and explicit user approval before writes.
 
 ## App Pages
 

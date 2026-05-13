@@ -364,6 +364,7 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   expect(filteredExport.headers()["cache-control"]).toContain("no-store");
   const csv = await filteredExport.text();
   expect(csv).toContain("Retail Wash");
+  expect(csv).not.toContain("plaid_transaction_id");
   expect(csv).not.toMatch(/demo-token|access_token|SUPABASE_SERVICE_ROLE_KEY|PLAID_SECRET|sk-[A-Za-z0-9]/i);
 
   await page.getByLabel("Merchant cleanup").getByRole("button", { name: /apply cleanup/i }).click();
@@ -378,7 +379,7 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
 
   await expect(page.getByRole("heading", { name: "OpenAI" })).toBeVisible();
   await expect(page.getByLabel("Read-only transaction details")).toContainText("Raw Plaid merchant");
-  await expect(page.getByLabel("Read-only transaction details")).toContainText("Plaid transaction");
+  await expect(page.getByLabel("Read-only transaction details")).not.toContainText("Plaid transaction");
   await expect(page.locator("input[name='merchantName']")).toHaveValue("OpenAI");
   await expect(page.getByText("Category / subcategory")).toHaveCount(0);
   await expect(page.locator("select[name='baseIntent']")).toContainText("Personal");

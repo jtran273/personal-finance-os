@@ -73,7 +73,7 @@ Plaid API
 | `/login/demo` | `POST` | Set demo cookie when demo mode is enabled |
 | `/login/logout` | `POST` | Sign out and clear demo cookie |
 
-Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks.
+Browser-initiated mutating route handlers use same-origin validation through `src/lib/security/request.ts`. The CSV export route is a credentialed read and rejects cross-site browser reads. Scheduled Plaid sync, proactive scan, and OpenClaw briefing routes are the exceptions: they are intended for trusted server jobs and are authorized with `CRON_SECRET` instead of browser same-origin checks.
 
 ## Data Model
 
@@ -101,6 +101,7 @@ Core tables:
 - `audit_events`: material changes to labels, review state, recurring rows, and related records.
 
 Every finance table includes `user_id`. RLS policies enforce user ownership.
+Sensitive raw/provider columns are additionally hidden from direct authenticated selects where the browser does not need them, including Plaid access tokens, Plaid item ids, sync cursors, raw provider payloads, provider transaction ids, location, and payment metadata. `plaid_items`, `agent_proposals`, and `audit_events` writes go through service-route code instead of direct browser-table writes.
 
 ## Plaid Flow
 
@@ -201,7 +202,7 @@ The agent inbox at `/agent-inbox` is still the primary human review surface for 
 
 Ambiguous reimbursement clarification is modeled as an agent-safe question request, not a mutation. `src/lib/agents/clarifications.ts` decides whether a reimbursement candidate should interrupt James, stay silent, or remain queued in the app based on confidence, accounting impact, open-question batching, and value thresholds. The resulting `assistant_clarification_request` carries minimized transaction context, a single question, evidence strings, and `writesAllowed: false`. Answers become feedback for future reimbursement matching and suppression, but any split, reimbursement record, merchant rule, or review resolution still needs an explicit approval path that re-reads user-owned rows and writes audit events.
 
-CSV exports and any future manual imports are optional backfill or reconciliation tools. They are not required in the v1 automated clarification path, which should rely on Plaid/bank data, Ledger heuristics, optional LLM reasoning, and OpenClaw asking only when the answer changes accounting meaningfully.
+CSV exports and any future manual imports are optional backfill or reconciliation tools. CSV exports include enriched rows and safe raw merchant/category labels, but not Plaid provider transaction ids. They are not required in the v1 automated clarification path, which should rely on Plaid/bank data, Ledger heuristics, optional LLM reasoning, and OpenClaw asking only when the answer changes accounting meaningfully.
 
 ## Settings Flow
 

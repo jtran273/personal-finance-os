@@ -64,6 +64,12 @@ The CI job performs:
 
 CI sets `ENABLE_DEMO_MODE=true` so Playwright can smoke-test the app without Supabase, Plaid, or OpenAI credentials. If a future test needs real provider access, keep it out of the default CI path unless it uses isolated preview credentials and documents the risk.
 
+Security automation also includes:
+
+- CodeQL analysis on pushes, PRs, manual dispatch, and a weekly schedule.
+- Dependency review on PRs, failing high-severity dependency additions.
+- Dependabot update checks for npm packages and GitHub Actions.
+
 ## PR Review Workflow
 
 Before requesting review:
@@ -76,31 +82,34 @@ Before requesting review:
 
 Reviewers should focus first on secret exposure, user-owned data scoping, RLS/auth behavior, Plaid token handling, route-handler origin checks, and whether unresolved finance data could be treated as trusted budget data.
 
-## Verify Repository Privacy
+## Verify Public Repository Protection
 
 ```bash
 gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPrivate,url
 ```
 
-Expected production security posture:
+Expected visibility:
 
 ```text
-visibility: PRIVATE
-isPrivate: true
+visibility: PUBLIC
+isPrivate: false
 ```
 
-If it is public, make it private before storing real production data:
+Verify GitHub security settings:
 
 ```bash
-gh repo edit jtran273/personal-finance-os --visibility private
+gh api repos/jtran273/personal-finance-os --jq '.security_and_analysis'
+gh api repos/jtran273/personal-finance-os/branches/main/protection
 ```
+
+Required before treating `main` as protected: secret scanning, secret scanning push protection, Dependabot alerts/security updates, and branch protection requiring PRs plus passing checks. If a setting cannot be enabled on the current plan, document the gap in the PR or deployment notes.
 
 ## Deployment Verification
 
 After a Vercel deployment:
 
 1. Open `/login`.
-2. Confirm the demo button visibility matches the intended `ENABLE_DEMO_MODE` setting: `false` hides it; `true` or unset shows the seeded demo entry. Production should choose this explicitly.
+2. Confirm the demo button visibility matches the intended `ENABLE_DEMO_MODE` setting: production unset or `false` hides it; `true` shows the seeded demo entry.
 3. Sign in with Supabase Auth.
 4. Confirm `/dashboard` loads.
 5. Confirm `/transactions`, `/review`, `/recurring`, `/accounts`, and `/settings` load.
@@ -300,9 +309,10 @@ Export route:
 Expected:
 
 - requires a signed-in user or demo mode,
+- rejects cross-site browser reads,
 - returns `Cache-Control: no-store`,
 - includes enriched labels, review/filter context, reimbursement summaries, and safe raw Plaid context,
-- excludes Plaid access tokens, service role keys, auth headers, and provider secrets.
+- excludes Plaid access tokens, provider transaction ids, service role keys, auth headers, and provider secrets.
 
 ## AI Provider Checks
 

@@ -6,7 +6,7 @@ Ledger is designed to run on Vercel with Supabase Auth/Postgres, Plaid, and an o
 
 - **Local development**: `npm run dev`, Plaid Sandbox, `.env.local`, local demo mode allowed.
 - **Vercel Preview**: branch deployments for testing Supabase and Plaid Sandbox or limited real-data checks.
-- **Vercel Production**: `https://personal-finance-os-jtran273s-projects.vercel.app`, Supabase Auth, Plaid intended environment, seeded demo entry available unless disabled.
+- **Vercel Production**: `https://personal-finance-os-jtran273s-projects.vercel.app`, Supabase Auth, Plaid intended environment, seeded demo entry disabled unless `ENABLE_DEMO_MODE=true`.
 
 Use the stable production alias above for day-to-day access. Vercel also creates per-deployment URLs such as `personal-finance-<hash>-jtran273s-projects.vercel.app`; those are immutable build artifacts, not the main app URL.
 
@@ -21,9 +21,9 @@ Use the stable production alias above for day-to-day access. Vercel also creates
 - Google Cloud OAuth client for optional read-only Calendar context.
 - Optional OpenAI API key for server-side suggestions.
 
-## Production Repository Requirement
+## Public Repository Requirement
 
-The GitHub repository is expected to be private for production financial data. Verify it with:
+The GitHub repository is public. Production safety depends on keeping secrets, private financial exports, provider payload dumps, and deployment settings out of git. Verify visibility with:
 
 ```bash
 gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPrivate,url
@@ -32,8 +32,10 @@ gh repo view jtran273/personal-finance-os --json nameWithOwner,visibility,isPriv
 Expected:
 
 ```json
-{"isPrivate":true,"visibility":"PRIVATE"}
+{"isPrivate":false,"visibility":"PUBLIC"}
 ```
+
+Before production use, confirm GitHub secret scanning and push protection are enabled. Branch protection, Dependabot security updates, CodeQL, and dependency review should be enabled before treating `main` as protected.
 
 ## Environment Variables
 
@@ -60,7 +62,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
 | `OPENAI_MODEL` | Server only | Optional | Defaults in code when unset. |
 | `ENABLE_OPENAI_AUTO_REVIEW` | Server only | Optional | Defaults to disabled. Set `true` only when Plaid import, review page load, and proactive scans should spend OpenAI tokens on automatic suggestions. Manual review suggestions still work when OpenAI is configured. |
-| `ENABLE_DEMO_MODE` | Server only | Production explicit | Defaults to enabled. Set `false` to hide the seeded demo entry, or set `true`/leave unset only for an intentional demo deployment. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
+| `ENABLE_DEMO_MODE` | Server only | Production optional | Defaults to enabled outside production and disabled in production. Set `true` only when the deployment should expose the seeded demo workspace. Demo data is served from the in-memory demo client, not real Supabase/Plaid rows. |
 | `CRON_SECRET` | Server only | Plaid cron yes | Bearer secret Vercel sends to `/api/plaid/sync/scheduled` so only the scheduler can trigger Plaid sync. Optional proactive scan and OpenClaw scheduled routes also require it if they are separately scheduled later. |
 | `OPENCLAW_TOKEN` | Server only | OpenClaw yes | Shared bearer secret for `/api/openclaw/signals` and `/api/openclaw/replies`. Rotate alongside the OpenClaw caller. |
 | `OPENCLAW_USER_ID` | Server only | OpenClaw yes | Supabase user id whose Ledger rows are exposed to the server-to-server OpenClaw integration. |
@@ -85,9 +87,11 @@ Existing Plaid access tokens may have been encrypted with the legacy Plaid-deriv
 2. Enable Supabase Auth email/password sign-in.
 3. Apply all SQL files in `supabase/migrations` in order.
 4. Verify RLS is enabled on finance tables.
-5. Verify `plaid_items.access_token_ciphertext` is not selectable by `anon` or `authenticated`.
-6. Create at least one Supabase Auth user.
-7. Load `supabase/seed.sql` only for development/demo data.
+5. Verify `plaid_items.access_token_ciphertext`, `plaid_items.plaid_item_id`, and `plaid_items.transaction_cursor` are not selectable by `anon` or `authenticated`.
+6. Verify `raw_transactions.raw_payload`, provider transaction ids, location, and payment metadata are not selectable by `anon` or `authenticated`.
+7. Verify direct authenticated writes are disabled for `plaid_items`, `agent_proposals`, and `audit_events`.
+8. Create at least one Supabase Auth user.
+9. Load `supabase/seed.sql` only for development/demo data.
 
 The seed uses a fixed demo `user_id`. Do not treat seed rows as real user data unless they are intentionally remapped to the signed-in user's id.
 
@@ -103,7 +107,7 @@ npm run build
 ```
 
 5. Add environment variables for Preview and Production.
-6. Choose demo visibility intentionally: set `ENABLE_DEMO_MODE=false` to hide the seeded demo entry, or set `true`/leave unset only when the deployment should expose the seeded demo workspace.
+6. Choose demo visibility intentionally: leave production unset or set `ENABLE_DEMO_MODE=false` to hide the seeded demo entry, or set `ENABLE_DEMO_MODE=true` only when the deployment should expose the seeded demo workspace.
 7. Deploy a Preview build.
 8. Verify login, app routes, Plaid settings, and CSV export.
 9. Set `CRON_SECRET`; `vercel.json` schedules `/api/plaid/sync/scheduled` daily at `12:00 UTC`, which is 5:00 AM America/Los_Angeles during daylight saving time. Vercel sends `CRON_SECRET` as the bearer token for cron invocations.
@@ -164,9 +168,9 @@ Manual OpenAI suggestions are advisory and require user acceptance. Automatic Op
 
 ## First Production Smoke Test
 
-1. Confirm GitHub repo is private.
+1. Confirm GitHub repo visibility is intentional and public-safe repository protections are enabled.
 2. Confirm Vercel Production variables are present.
-3. Confirm the seeded demo entry visibility matches `ENABLE_DEMO_MODE`: `false` hides it; `true` or unset shows it.
+3. Confirm the seeded demo entry visibility matches `ENABLE_DEMO_MODE`: production unset or `false` hides it; `true` shows it.
 4. Visit `/login`.
 5. Sign in.
 6. Confirm `/dashboard` loads.

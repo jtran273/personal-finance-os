@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import type {
   AccountRecord,
   AccountRow,
@@ -47,6 +48,7 @@ import {
 import { missingDefaultSystemCategories } from "../finance/default-categories";
 import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
 import { isRecurringReview } from "../review/reasons";
+import { getSupabaseConfig } from "../supabase/env";
 
 interface QueryError {
   message: string;
@@ -93,6 +95,26 @@ export interface FinanceSupabaseClient {
   from<Table extends FinanceTableName>(
     table: Table
   ): FinanceTableBuilder<TableRow<Table>, TableInsert<Table>, TableUpdate<Table>>;
+}
+
+function canUseServiceRoleClient(client: FinanceSupabaseClient) {
+  return "auth" in (client as unknown as Record<string, unknown>);
+}
+
+function createServiceRoleClient(client: FinanceSupabaseClient) {
+  if (!canUseServiceRoleClient(client)) return null;
+
+  const config = getSupabaseConfig();
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+
+  if (!config || !serviceRoleKey) return null;
+
+  return createClient<Database>(config.url, serviceRoleKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  }) as unknown as FinanceSupabaseClient;
 }
 
 export class FinanceDbError extends Error {
@@ -546,7 +568,7 @@ function buildTransactionRecord({
     id: row.id,
     userId: row.user_id,
     rawTransactionId: row.raw_transaction_id,
-    plaidTransactionId: raw?.plaid_transaction_id ?? null,
+    plaidTransactionId: null,
     accountId: row.account_id,
     accountName: account?.name ?? "Unknown account",
     accountMask: account?.mask ?? null,
@@ -575,15 +597,14 @@ function buildTransactionRecord({
 
 type RawTransactionContextRow = Pick<
   RawTransactionRow,
-  "id" | "merchant_name" | "name" | "plaid_category" | "plaid_transaction_id"
+  "id" | "merchant_name" | "name" | "plaid_category"
 >;
 
 const RAW_TRANSACTION_CONTEXT_COLUMNS = [
   "id",
   "merchant_name",
   "name",
-  "plaid_category",
-  "plaid_transaction_id"
+  "plaid_category"
 ].join(",");
 
 export function transactionMatchesSearch(transaction: TransactionRecord, search: string) {
@@ -1751,7 +1772,8 @@ export async function recordAuditEvent(
     user_id: userId
   };
 
-  const result = await client
+  const auditClient = createServiceRoleClient(client) ?? client;
+  const result = await auditClient
     .from("audit_events")
     .insert(insert)
     .select("*")

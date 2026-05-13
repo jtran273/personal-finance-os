@@ -22,7 +22,7 @@ This separation is the core of the product. It lets the app preserve evidence, e
 ## Current Status
 
 - GitHub repo: `jtran273/personal-finance-os`
-- Visibility: private
+- Visibility: public
 - Default branch: `main`
 - Deployment target: Vercel
 - Production URL: `https://personal-finance-os-jtran273s-projects.vercel.app`
@@ -37,10 +37,12 @@ Production hardening currently includes:
 - Supabase RLS policies on finance tables.
 - Server-only Plaid token exchange and sync.
 - Encrypted Plaid access token storage.
-- Seeded demo mode available when `ENABLE_DEMO_MODE` is not set to `false`, with no real Supabase/Plaid data exposed.
+- Service-route-only writes for Plaid items, agent proposals, and audit events, with sensitive raw Plaid columns hidden from direct authenticated selects.
+- Seeded demo mode available locally by default and in production only when `ENABLE_DEMO_MODE=true`, with no real Supabase/Plaid data exposed.
 - Same-origin checks for browser-initiated mutating route handlers, with scheduled Plaid sync, proactive scan, and OpenClaw briefing jobs protected separately by `CRON_SECRET`.
 - Security headers in `next.config.ts`.
 - Ignored local secret files and generated build output.
+- GitHub secret scanning and push protection enabled on the public repository, with CodeQL, dependency review, Dependabot, production dependency audit, and app checks in CI.
 
 ## Main Workflows
 
@@ -48,7 +50,7 @@ Production hardening currently includes:
 
 Users sign in with Supabase Auth at `/login`. Protected routes redirect unauthenticated users back to login.
 
-Demo mode can open a seeded workspace without Supabase or Plaid. It is separate from real Supabase/Plaid data, uses an HTTP-only demo cookie, and can be disabled with `ENABLE_DEMO_MODE=false`.
+Demo mode can open a seeded workspace without Supabase or Plaid. It is separate from real Supabase/Plaid data, uses an HTTP-only demo cookie, defaults on for local development, and is available in production only when `ENABLE_DEMO_MODE=true`.
 
 ### Connect A Bank
 
@@ -131,7 +133,7 @@ The recurring page also builds a deterministic next-30-day cashflow calendar fro
 
 ### Export
 
-The CSV export uses the current transaction filters and returns enriched finance data plus safe raw Plaid context. It does not export Plaid access tokens, service-role keys, auth headers, or provider secrets.
+The CSV export uses the current transaction filters and returns enriched finance data plus safe raw Plaid context. It rejects cross-site browser reads and does not export Plaid access tokens, provider transaction ids, service-role keys, auth headers, or provider secrets.
 
 CSV or manual import workflows are optional backfill tools, not the core reimbursement workflow. The main product path should continue to rely on connected bank data, review-safe AI or heuristic suggestions, and explicit user approval before writes.
 
@@ -248,7 +250,7 @@ Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production
 
 ## Demo Mode
 
-Demo mode is intended for local development, screenshots, smoke tests, CI, and product walkthroughs. It uses a seeded in-memory finance workspace, not real Supabase/Plaid data. Demo mode is enabled unless `ENABLE_DEMO_MODE=false`.
+Demo mode is intended for local development, screenshots, smoke tests, CI, and deliberate product walkthroughs. It uses a seeded in-memory finance workspace, not real Supabase/Plaid data. Demo mode defaults on outside production and defaults off in production unless `ENABLE_DEMO_MODE=true`.
 
 The seeded workspace includes review cases for missing category, unclear transfer, recurring candidate, low-confidence cleanup, and merchant-rule testing, including Retail Wash rows that exercise the merchant cleanup flow.
 
@@ -258,7 +260,7 @@ Set it explicitly when a scripted environment needs the seeded workspace:
 ENABLE_DEMO_MODE=true npm run test:e2e
 ```
 
-Set `ENABLE_DEMO_MODE=false` when testing only the real Supabase sign-in path or when you want to hide the production demo entry.
+Set `ENABLE_DEMO_MODE=false` when testing only the real Supabase sign-in path. Set `ENABLE_DEMO_MODE=true` deliberately on any production deployment that should show the seeded demo entry.
 
 ## Repository Map
 
@@ -285,7 +287,11 @@ src/lib/supabase/                Supabase browser/server clients and auth middle
 supabase/migrations/             Database schema, indexes, grants, RLS policies
 supabase/seed.sql                Development seed data only
 e2e/                             Playwright smoke tests
-.github/workflows/ci.yml         CI checks
+.github/dependabot.yml           Dependency and GitHub Actions update checks
+.github/workflows/ci.yml         Main app CI checks
+.github/workflows/codeql.yml     CodeQL static analysis
+.github/workflows/dependency-review.yml
+                                  Dependency review for pull requests
 ```
 
 ## Documentation Set
@@ -311,7 +317,7 @@ Before opening a PR:
 3. Run the relevant checks from [OPERATIONS.md](OPERATIONS.md), or call out any skipped checks and why.
 4. Fill in the PR template with user impact, security/data-safety notes, verification, and agent handoff details.
 
-CI runs install, lint, typecheck, unit tests, build, Playwright smoke tests in demo mode, production dependency audit, and whitespace checks on PRs to `main`.
+CI runs install, lint, typecheck, unit tests, build, Playwright smoke tests in demo mode, production dependency audit, and whitespace checks on PRs to `main`. Separate security workflows run CodeQL analysis and dependency review, and Dependabot is configured for npm and GitHub Actions updates.
 
 ## Development Rules
 

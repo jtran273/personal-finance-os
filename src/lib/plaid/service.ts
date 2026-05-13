@@ -64,7 +64,6 @@ const PLAID_ITEM_COLUMNS = [
   "id",
   "user_id",
   "institution_id",
-  "plaid_item_id",
   "status",
   "available_products",
   "billed_products",
@@ -241,7 +240,10 @@ export interface PlaidInstitutionInput {
 }
 
 type FinanceSupabaseClient = SupabaseClient;
-type PlaidItemPublicRow = Omit<PlaidItemRow, "access_token_ciphertext" | "transaction_cursor">;
+type PlaidItemPublicRow = Omit<
+  PlaidItemRow,
+  "access_token_ciphertext" | "plaid_item_id" | "transaction_cursor"
+>;
 
 export interface PlaidConnectionSummary {
   availableProducts: string[];

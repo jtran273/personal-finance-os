@@ -15,7 +15,8 @@ import {
   buildTransactionsCsv,
   listTransactionReimbursementSummaries
 } from "@/lib/export/transactions";
-import { jsonNoStore } from "@/lib/security/request";
+import { logSafeError } from "@/lib/security/logging";
+import { jsonNoStore, requireSameOriginReadRequest } from "@/lib/security/request";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -57,6 +58,9 @@ function exportFilename(filters: TransactionFilterState) {
 }
 
 export async function GET(request: NextRequest) {
+  const originError = requireSameOriginReadRequest(request);
+  if (originError) return originError;
+
   const context = await getFinanceServerContext();
 
   if (!context.isConfigured) {
@@ -92,7 +96,7 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (exportError) {
-    console.error("transactions_export_failed", exportError);
+    logSafeError("transactions_export_failed", exportError);
     return jsonNoStore({ error: "Unable to export transactions." }, { status: 500 });
   }
 }

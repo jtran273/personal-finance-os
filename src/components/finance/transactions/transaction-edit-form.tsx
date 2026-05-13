@@ -235,10 +235,6 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
               <span>Review</span>
               <strong>{reviewStatusLabel(transaction)}</strong>
             </div>
-            <div>
-              <span>Plaid transaction</span>
-              <strong>{transaction.plaidTransactionId ?? "Unavailable"}</strong>
-            </div>
           </div>
         </aside>
       </div>

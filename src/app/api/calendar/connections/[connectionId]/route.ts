@@ -7,6 +7,7 @@ import {
   listGoogleCalendarConnections,
   requireCalendarRouteUser
 } from "@/lib/calendar";
+import { logSafeError } from "@/lib/security/logging";
 import { jsonNoStore, requireSameOriginRequest } from "@/lib/security/request";
 
 export const runtime = "nodejs";
@@ -39,7 +40,7 @@ export async function DELETE(request: NextRequest, { params }: CalendarConnectio
       return jsonNoStore({ error: "Google Calendar integration is not configured." }, { status: 503 });
     }
 
-    console.error("google_calendar_disconnect_failed", error);
+    logSafeError("google_calendar_disconnect_failed", error);
     return jsonNoStore({ error: "Unable to disconnect Google Calendar." }, { status: 500 });
   }
 }

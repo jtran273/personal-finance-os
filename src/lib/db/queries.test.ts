@@ -354,9 +354,10 @@ test("listTransactions applies database limits before hydration for simple filte
   assert.deepEqual(client.limitCalls.enriched_transactions, [2]);
   assert.equal(
     client.selectCalls.raw_transactions?.at(-1),
-    "id,merchant_name,name,plaid_category,plaid_transaction_id"
+    "id,merchant_name,name,plaid_category"
   );
   assert.doesNotMatch(client.selectCalls.raw_transactions?.at(-1) ?? "", /raw_payload/);
+  assert.doesNotMatch(client.selectCalls.raw_transactions?.at(-1) ?? "", /plaid_transaction_id/);
 });
 
 test("listTransactions preserves hydrated filtering before applying limits", async () => {

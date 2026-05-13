@@ -26,6 +26,21 @@ export type RecurringCadence = "weekly" | "biweekly" | "monthly" | "quarterly" |
 export type RecurringStatus = "active" | "pending" | "paused" | "dismissed";
 export type ReimbursementStatus = "expected" | "requested" | "received" | "written-off";
 export type InsightTone = "info" | "warn" | "ok";
+export type AgentProposalStatus = "pending" | "accepted" | "dismissed" | "expired" | "answered";
+export type AgentProposalType =
+  | "review_suggestion"
+  | "merchant_rule"
+  | "possible_reimbursable_expense"
+  | "reimbursement_candidate"
+  | "reimbursement_match"
+  | "safe_to_spend_warning"
+  | "clarification_request";
+export type AgentTargetKind =
+  | "review_item"
+  | "enriched_transaction"
+  | "reimbursement_record"
+  | "merchant_rule"
+  | "recurring_expense";
 
 type DbInsert<Row extends { user_id: string }> = Partial<Row> & Pick<Row, "user_id">;
 type DbUpdate<Row> = Partial<Omit<Row, "id" | "user_id" | "created_at" | "first_seen_at">>;
@@ -303,6 +318,31 @@ export interface InsightRow {
   updated_at: string;
 }
 
+export interface AgentProposalRow {
+  id: string;
+  user_id: string;
+  proposal_type: AgentProposalType;
+  target_kind: AgentTargetKind;
+  target_id: string;
+  evidence: Json;
+  confidence: number | null;
+  proposed_patch: Json;
+  status: AgentProposalStatus;
+  clarification_question: string | null;
+  clarification_answer: string | null;
+  clarification_answer_kind: string | null;
+  question_fingerprint: string | null;
+  source_context_id: string | null;
+  source_candidate_id: string | null;
+  source_agent: string;
+  expires_at: string | null;
+  accepted_at: string | null;
+  dismissed_at: string | null;
+  answered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AuditEventRow {
   id: string;
   user_id: string;
@@ -334,6 +374,7 @@ export type Database = {
       recurring_expenses: TableDefinition<RecurringExpenseRow>;
       reimbursement_records: TableDefinition<ReimbursementRecordRow>;
       insights: TableDefinition<InsightRow>;
+      agent_proposals: TableDefinition<AgentProposalRow>;
       audit_events: TableDefinition<AuditEventRow>;
     };
     Views: Record<never, never>;
@@ -351,6 +392,9 @@ export type Database = {
       recurring_status: RecurringStatus;
       reimbursement_status: ReimbursementStatus;
       insight_tone: InsightTone;
+      agent_proposal_status: AgentProposalStatus;
+      agent_proposal_type: AgentProposalType;
+      agent_target_kind: AgentTargetKind;
     };
     CompositeTypes: Record<never, never>;
   };
@@ -456,6 +500,31 @@ export interface TransactionRecord {
 
 export interface ReviewQueueItem extends ReviewItemRecord {
   transaction: TransactionRecord;
+}
+
+export interface AgentProposalRecord {
+  id: string;
+  userId: string;
+  proposalType: AgentProposalType;
+  targetKind: AgentTargetKind;
+  targetId: string;
+  evidence: Json;
+  confidence: number | null;
+  proposedPatch: Json;
+  status: AgentProposalStatus;
+  clarificationQuestion: string | null;
+  clarificationAnswer: string | null;
+  clarificationAnswerKind: string | null;
+  questionFingerprint: string | null;
+  sourceContextId: string | null;
+  sourceCandidateId: string | null;
+  sourceAgent: string;
+  expiresAt: string | null;
+  acceptedAt: string | null;
+  dismissedAt: string | null;
+  answeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface RecurringExpenseRecord {

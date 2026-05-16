@@ -57,6 +57,7 @@ Plaid API
 | `/api/plaid/link-token` | `POST` | Create a Plaid Link token for the signed-in user, including update mode for a selected item |
 | `/api/plaid/exchange` | `POST` | Exchange a Plaid public token, persist item metadata, then run initial sync |
 | `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections, or one selected connection |
+| `/api/plaid/sync/opportunistic` | `POST` | Run a background app-open Plaid sync for items that have not synced successfully in the last 24 hours |
 | `/api/plaid/sync/scheduled` | `GET`/`POST` | Run scheduled sync for all users with syncable Plaid items when authorized with `CRON_SECRET` |
 | `/api/plaid/connections/[connectionId]` | `DELETE` | Revoke a Plaid item and stop future sync |
 | `/api/export/transactions` | `GET` | Export filtered enriched transactions as CSV |
@@ -104,7 +105,7 @@ Every finance table includes `user_id`. RLS policies enforce user ownership.
 
 The core sync service can run either all syncable items or a single item by database item id. Route handlers use that single-item path after Plaid Link update mode so repair and relink flows do not depend on browser-side transaction logic.
 
-Initial, manual, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs.
+Initial, manual, app-open, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs. App-open sync is opportunistic: the authenticated app shell calls a separate route in the background, the server skips Plaid items with a successful sync in the last 24 hours, and a recent running sync returns an in-progress no-op so dashboard rendering stays independent from Plaid latency.
 
 The access token never leaves server code.
 

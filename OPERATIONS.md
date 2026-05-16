@@ -174,7 +174,17 @@ Check:
 
 If logs show a Plaid configuration error mentioning `PLAID_TOKEN_ENCRYPTION_KEY`, generate one with `openssl rand -base64 32`, store it in the server environment, and redeploy before attempting another sync. If an existing item still reports `PLAID_TOKEN_DECRYPTION_ERROR` after the explicit key is set, it was likely encrypted with unavailable legacy key material and must be reconnected unless a migration with the old key is available.
 
-Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately. Production Link tokens must not send an `http://localhost` redirect; use a registered HTTPS URL or omit the redirect for local desktop testing.
+Manual, app-open, and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately. Production Link tokens must not send an `http://localhost` redirect; use a registered HTTPS URL or omit the redirect for local desktop testing.
+
+### App-open sync
+
+Authenticated app loads call:
+
+```text
+POST /api/plaid/sync/opportunistic
+```
+
+The route uses the same server-only sync logic as manual sync, but only for Plaid items whose `last_successful_sync_at` is at least 24 hours old or missing. If a sync run is already running for the user, it returns an in-progress no-op. Use Settings manual sync when an immediate refresh is required.
 
 ### Connection needs repair
 

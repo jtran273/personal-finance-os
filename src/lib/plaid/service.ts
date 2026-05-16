@@ -183,6 +183,8 @@ const RAW_TRANSACTION_COLUMNS = [
 
 const SYNC_PAGE_SIZE = 500;
 const UPSERT_CHUNK_SIZE = 100;
+const OPPORTUNISTIC_SYNC_THROTTLE_MS = 24 * 60 * 60 * 1000;
+const OPPORTUNISTIC_SYNC_RUNNING_STALE_MS = 30 * 60 * 1000;
 const RETIREMENT_SUBTYPES = new Set([
   "401a",
   "401k",
@@ -309,6 +311,12 @@ export interface PlaidScheduledSyncSummary {
   totalUsers: number;
 }
 
+export interface PlaidOpportunisticSyncSummary {
+  checkedAt: string;
+  reason: "in_progress" | "no_items" | "recently_synced" | "synced";
+  sync: PlaidSyncRunSummary | null;
+}
+
 export interface PlaidLinkTokenResult {
   expiration: string;
   linkToken: string;
@@ -338,6 +346,31 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
     status: item.status,
     updatedAt: item.updated_at
   };
+}
+
+export function isPlaidItemDueForOpportunisticSync(
+  item: Pick<PlaidItemRow, "last_successful_sync_at" | "status">,
+  now = new Date()
+) {
+  if (item.status === "revoked") return false;
+  if (!item.last_successful_sync_at) return true;
+
+  const lastSuccessfulSyncAt = Date.parse(item.last_successful_sync_at);
+  if (Number.isNaN(lastSuccessfulSyncAt)) return true;
+
+  return now.getTime() - lastSuccessfulSyncAt >= OPPORTUNISTIC_SYNC_THROTTLE_MS;
+}
+
+export function isRecentRunningPlaidSync(
+  run: Pick<PlaidSyncRunRow, "started_at" | "status"> | null | undefined,
+  now = new Date()
+) {
+  if (!run || run.status !== "running") return false;
+
+  const startedAt = Date.parse(run.started_at);
+  if (Number.isNaN(startedAt)) return true;
+
+  return now.getTime() - startedAt < OPPORTUNISTIC_SYNC_RUNNING_STALE_MS;
 }
 
 function byId(rows: InstitutionRow[]) {
@@ -1850,6 +1883,23 @@ async function createPlaidSyncRun(
   return expectData(result, "Create Plaid sync run") as unknown as PlaidSyncRunRow;
 }
 
+async function getLatestRunningPlaidSyncRun(
+  client: FinanceSupabaseClient,
+  userId: string
+) {
+  const result = await client
+    .from("plaid_sync_runs")
+    .select(PLAID_SYNC_RUN_COLUMNS)
+    .eq("user_id", userId)
+    .eq("status", "running")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (result.error) throw new Error(`Load running Plaid sync run: ${result.error.message}`);
+  return (result.data ?? null) as unknown as PlaidSyncRunRow | null;
+}
+
 async function persistPlaidSyncRunItem({
   client,
   item,
@@ -2157,6 +2207,20 @@ export async function syncPlaidConnections(
   source: PlaidSyncRunSource = "manual"
 ): Promise<PlaidSyncRunSummary> {
   const items = await listPlaidItemsForSync(client, userId);
+  return syncLoadedPlaidItems({ client, items, source, userId });
+}
+
+async function syncLoadedPlaidItems({
+  client,
+  items,
+  source,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  items: PlaidItemRow[];
+  source: PlaidSyncRunSource;
+  userId: string;
+}) {
   const run = await createPlaidSyncRun(client, userId, source, items.length);
   const results: PlaidSyncItemSummary[] = [];
 
@@ -2195,6 +2259,53 @@ export async function syncPlaidConnections(
   });
   await finalizePlaidSyncRun(client, run, summary);
   return summary;
+}
+
+export async function syncOpportunisticPlaidConnections(
+  client: FinanceSupabaseClient,
+  userId: string,
+  now = new Date()
+): Promise<PlaidOpportunisticSyncSummary> {
+  const checkedAt = now.toISOString();
+  const runningRun = await getLatestRunningPlaidSyncRun(client, userId);
+  if (isRecentRunningPlaidSync(runningRun, now)) {
+    return {
+      checkedAt,
+      reason: "in_progress",
+      sync: null
+    };
+  }
+
+  const items = await listPlaidItemsForSync(client, userId);
+  if (items.length === 0) {
+    return {
+      checkedAt,
+      reason: "no_items",
+      sync: null
+    };
+  }
+
+  const dueItems = items.filter((item) => isPlaidItemDueForOpportunisticSync(item, now));
+  if (dueItems.length === 0) {
+    return {
+      checkedAt,
+      reason: "recently_synced",
+      sync: null
+    };
+  }
+
+  const sync = await syncLoadedPlaidItems({
+    client,
+    items: dueItems,
+    source: "opportunistic",
+    userId
+  });
+
+  return {
+    checkedAt,
+    reason: "synced",
+    sync
+  };
 }
 
 function toPersistedSyncRunItemSummary(row: PlaidSyncRunItemRow): PlaidSyncRunItemStatusSummary {

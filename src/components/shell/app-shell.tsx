@@ -7,6 +7,7 @@ import {
   Landmark,
   List,
   Repeat,
+  RefreshCw,
   Search,
   Settings,
   Sparkles,
@@ -25,6 +26,14 @@ type RouteMeta = {
   label: string;
   title: string;
 };
+
+type OpportunisticSyncReason = "in_progress" | "no_items" | "recently_synced" | "synced";
+
+interface OpportunisticSyncResponse {
+  opportunisticSync?: {
+    reason: OpportunisticSyncReason;
+  };
+}
 
 const routeHref: Record<RouteKey, string> = {
   accounts: "/accounts",
@@ -99,6 +108,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const shouldRefocusSearchRef = useRef(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [bankDataCheckStatus, setBankDataCheckStatus] = useState<"checking" | "updated" | null>("checking");
 
   const focusSearchInput = useCallback(() => {
     requestAnimationFrame(() => {
@@ -131,6 +141,41 @@ export function AppShell({ children }: { children: ReactNode }) {
     setIsSearchOpen(true);
     focusSearchInput();
   }, [currentTransactionSearch, focusSearchInput, pathname]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    fetch("/api/plaid/sync/opportunistic", {
+      cache: "no-store",
+      method: "POST"
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({})) as OpportunisticSyncResponse;
+        if (!response.ok) return null;
+        return body.opportunisticSync?.reason ?? null;
+      })
+      .then((reason) => {
+        if (ignore) return;
+
+        if (reason === "synced") {
+          setBankDataCheckStatus("updated");
+          router.refresh();
+          window.setTimeout(() => {
+            if (!ignore) setBankDataCheckStatus(null);
+          }, 4000);
+          return;
+        }
+
+        setBankDataCheckStatus(null);
+      })
+      .catch(() => {
+        if (!ignore) setBankDataCheckStatus(null);
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [router]);
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -206,6 +251,12 @@ export function AppShell({ children }: { children: ReactNode }) {
             <h1 className="topbar-title">{routeMeta[route].title}</h1>
           </div>
           <div className="topbar-actions">
+            {bankDataCheckStatus ? (
+              <div className="bank-data-check" role="status">
+                <RefreshCw size={13} aria-hidden />
+                <span>{bankDataCheckStatus === "checking" ? "Checking for new bank data" : "Bank data updated"}</span>
+              </div>
+            ) : null}
             <button
               aria-controls="mobile-transaction-search"
               aria-expanded={isSearchOpen}

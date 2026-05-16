@@ -57,7 +57,7 @@ The Plaid access token never goes to the browser.
 
 ### Sync Accounts And Transactions
 
-Manual sync imports:
+Manual and throttled app-open sync import:
 
 - institutions,
 - Plaid items,
@@ -69,7 +69,7 @@ Manual sync imports:
 - review items.
 
 Sync is designed to be idempotent so repeated syncs do not create duplicate transaction records.
-Each initial, manual, or scheduled sync also writes a persisted run summary with item counts, changed-row counts, status, and sanitized error metadata. Browser responses and Settings show app-owned connection ids and safe status only, not Plaid access tokens, transaction cursors, raw payloads, or provider item ids.
+Each initial, manual, app-open, or scheduled sync also writes a persisted run summary with item counts, changed-row counts, status, and sanitized error metadata. Browser responses and Settings show app-owned connection ids and safe status only, not Plaid access tokens, transaction cursors, raw payloads, or provider item ids. App-open sync runs in the background and skips Plaid items that synced successfully in the last 24 hours; manual sync remains available immediately from Settings.
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
 

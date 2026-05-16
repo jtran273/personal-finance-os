@@ -85,6 +85,7 @@ function formatSyncDate(value: string | null) {
 
 function formatSource(source: PlaidPersistedSyncRunSummary["source"]) {
   if (source === "initial") return "Initial";
+  if (source === "opportunistic") return "App open";
   if (source === "scheduled") return "Scheduled";
   return "Manual";
 }
@@ -221,7 +222,7 @@ function SyncObservabilityPanel({
           <div className={styles.settingRow}>
             <div>
               <div className={styles.settingTitle}>No persisted sync run yet</div>
-              <div className={styles.settingSub}>Manual, initial, and scheduled Plaid syncs will write safe per-run summaries here.</div>
+              <div className={styles.settingSub}>Manual, initial, app-open, and scheduled Plaid syncs will write safe per-run summaries here.</div>
             </div>
           </div>
         </div>

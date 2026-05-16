@@ -74,7 +74,7 @@ interface SyncRunSummary {
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   runId: string | null;
-  source: "initial" | "manual" | "scheduled";
+  source: "initial" | "manual" | "opportunistic" | "scheduled";
   startedAt: string;
   status: "succeeded" | "partial" | "failed";
   succeeded: number;

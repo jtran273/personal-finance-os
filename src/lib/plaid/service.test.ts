@@ -4,6 +4,8 @@ import { AccountType as PlaidAccountType, type AccountBase, type Transaction } f
 import {
   getDefaultConfidence,
   getRemovedPlaidTransactionIdsToDelete,
+  isPlaidItemDueForOpportunisticSync,
+  isRecentRunningPlaidSync,
   isSkippablePlaidTransactionsError,
   mergePlaidAccountSourcesForSync,
   planPendingRawTransactionReplacements,
@@ -139,6 +141,65 @@ test("transactions product availability errors can be skipped while importing ac
         status: 400
       }
     }),
+    false
+  );
+});
+
+test("opportunistic sync skips Plaid items successfully synced in the last 24 hours", () => {
+  const now = new Date("2026-05-15T18:00:00.000Z");
+
+  assert.equal(
+    isPlaidItemDueForOpportunisticSync({
+      last_successful_sync_at: "2026-05-15T00:00:00.000Z",
+      status: "active"
+    }, now),
+    false
+  );
+  assert.equal(
+    isPlaidItemDueForOpportunisticSync({
+      last_successful_sync_at: "2026-05-14T17:59:59.000Z",
+      status: "active"
+    }, now),
+    true
+  );
+  assert.equal(
+    isPlaidItemDueForOpportunisticSync({
+      last_successful_sync_at: null,
+      status: "error"
+    }, now),
+    true
+  );
+  assert.equal(
+    isPlaidItemDueForOpportunisticSync({
+      last_successful_sync_at: "2026-05-01T00:00:00.000Z",
+      status: "revoked"
+    }, now),
+    false
+  );
+});
+
+test("opportunistic sync treats recent running syncs as in progress", () => {
+  const now = new Date("2026-05-15T18:00:00.000Z");
+
+  assert.equal(
+    isRecentRunningPlaidSync({
+      started_at: "2026-05-15T17:45:00.000Z",
+      status: "running"
+    }, now),
+    true
+  );
+  assert.equal(
+    isRecentRunningPlaidSync({
+      started_at: "2026-05-15T17:20:00.000Z",
+      status: "running"
+    }, now),
+    false
+  );
+  assert.equal(
+    isRecentRunningPlaidSync({
+      started_at: "2026-05-15T17:45:00.000Z",
+      status: "succeeded"
+    }, now),
     false
   );
 });

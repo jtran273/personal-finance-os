@@ -135,7 +135,7 @@ Check:
 - user is signed in,
 - `PLAID_CLIENT_ID` is set,
 - correct Plaid secret is set for `PLAID_ENV`,
-- `PLAID_TOKEN_ENCRYPTION_KEY` is set in production,
+- `PLAID_TOKEN_ENCRYPTION_KEY` is set when `PLAID_ENV=production` or the app runs in production,
 - `PLAID_REDIRECT_URI` or `NEXT_PUBLIC_APP_URL` is valid when using an OAuth redirect,
 - Plaid redirect URI is registered for production OAuth institutions.
 
@@ -169,8 +169,10 @@ Check:
 - `PLAID_CLIENT_ID` is set,
 - `PLAID_ENV` matches the Plaid app/environment that created the stored access tokens,
 - the selected scoped secret is present (`PLAID_PRODUCTION_SECRET` for production or `PLAID_SANDBOX_SECRET` for sandbox),
-- existing legacy-encrypted access tokens can still decrypt after Plaid secret changes,
-- `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production before adding new production connections.
+- `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged before reading or adding production Plaid connections,
+- existing legacy-encrypted access tokens can still decrypt after Plaid secret changes.
+
+If logs show a Plaid configuration error mentioning `PLAID_TOKEN_ENCRYPTION_KEY`, generate one with `openssl rand -base64 32`, store it in the server environment, and redeploy before attempting another sync. If an existing item still reports `PLAID_TOKEN_DECRYPTION_ERROR` after the explicit key is set, it was likely encrypted with unavailable legacy key material and must be reconnected unless a migration with the old key is available.
 
 Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately. Production Link tokens must not send an `http://localhost` redirect; use a registered HTTPS URL or omit the redirect for local desktop testing.
 
@@ -321,7 +323,8 @@ When adding a table:
 1. Rotate in Plaid.
 2. Update `PLAID_SANDBOX_SECRET`, `PLAID_PRODUCTION_SECRET`, or `PLAID_SECRET`.
 3. Redeploy.
-4. Test Link token creation and sync.
+4. Confirm `PLAID_TOKEN_ENCRYPTION_KEY` is set before production/prod-like sync.
+5. Test Link token creation and sync.
 
 ### Plaid token encryption key
 
@@ -333,7 +336,7 @@ Safe options:
 - add a migration path that decrypts with the old key and re-encrypts with the new key,
 - rotate during a maintenance window.
 
-Do not rotate this key casually in production.
+Do not rotate this key casually in production. Changing or removing it can make stored Plaid access tokens unreadable; affected items need reconnect unless a compatible legacy key or migration is available.
 
 ## Release Notes Template
 

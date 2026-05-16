@@ -214,6 +214,10 @@ Generate a production Plaid token encryption key with:
 openssl rand -base64 32
 ```
 
+Set `PLAID_TOKEN_ENCRYPTION_KEY` before using `PLAID_ENV=production`, including prod-like local testing. Store the same value in every environment that must read the same Plaid items. This key is separate from Plaid client secrets so Plaid secret rotation does not make newly encrypted access tokens unreadable.
+
+Do not rotate or remove `PLAID_TOKEN_ENCRYPTION_KEY` casually. Existing Plaid access tokens are encrypted with the key that was active when each item was connected. If the key cannot decrypt an item and no compatible legacy key is available, that institution must be reconnected.
+
 Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production setup.
 
 ## Demo Mode

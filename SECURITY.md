@@ -112,7 +112,7 @@ Production requires `PLAID_TOKEN_ENCRYPTION_KEY`. Generate it with:
 openssl rand -base64 32
 ```
 
-The encryption code can still decrypt legacy local tokens derived from Plaid credentials, but new production tokens should use the dedicated encryption key. Keep this key stable for the lifetime of stored Plaid tokens. If it is lost, existing Plaid items cannot be decrypted and must be reconnected.
+The encryption code can still try the legacy Plaid-derived key for old ciphertext after an explicit key is configured, but production and `PLAID_ENV=production` reads and writes require the dedicated encryption key. Keep this key stable for the lifetime of stored Plaid tokens. If it is lost or changed, existing Plaid items cannot be decrypted and must be reconnected unless a planned migration with the old key is available.
 
 ## Demo Mode
 
@@ -182,6 +182,7 @@ Do not log:
 - Vercel project environment variables are set for Production and Preview separately.
 - `ENABLE_DEMO_MODE` is unset or `false` in production.
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
+- `PLAID_TOKEN_ENCRYPTION_KEY` is also set for any prod-like environment using `PLAID_ENV=production`.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.
 - `PLAID_REDIRECT_URI` is HTTPS and registered in Plaid.
 - Supabase Auth is enabled.

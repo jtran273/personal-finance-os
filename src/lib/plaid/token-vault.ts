@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { getPlaidCredentialConfig, PlaidConfigurationError } from "./config";
+import { getPlaidCredentialConfig, getPlaidRuntimeEnvironment, PlaidConfigurationError } from "./config";
 
 const TOKEN_VERSION = "v1";
 const TOKEN_ALGORITHM = "aes-256-gcm";
@@ -13,6 +13,10 @@ export class PlaidTokenDecryptionError extends Error {
 
 function isProductionRuntime() {
   return process.env.NODE_ENV === "production" || process.env.VERCEL_ENV === "production";
+}
+
+function isStableTokenKeyRequired() {
+  return getPlaidRuntimeEnvironment() === "production" || isProductionRuntime();
 }
 
 function hashKey(...parts: string[]) {
@@ -39,27 +43,32 @@ function getExplicitTokenKey() {
     : null;
 }
 
-function getPrimaryTokenKey() {
+function getRequiredExplicitTokenKey() {
   const explicitKey = getExplicitTokenKey();
 
   if (explicitKey) {
     return explicitKey;
   }
 
-  if (isProductionRuntime()) {
-    throw new PlaidConfigurationError("PLAID_TOKEN_ENCRYPTION_KEY is required in production.");
+  if (isStableTokenKeyRequired()) {
+    throw new PlaidConfigurationError(
+      "PLAID_TOKEN_ENCRYPTION_KEY is required when PLAID_ENV=production or the app runs in production. " +
+      "Generate one with `openssl rand -base64 32`, store it unchanged in every production-like environment, " +
+      "and reconnect any Plaid items whose existing ciphertext cannot be decrypted."
+    );
+  }
+
+  return null;
+}
+
+function getPrimaryTokenKey() {
+  const explicitKey = getRequiredExplicitTokenKey();
+
+  if (explicitKey) {
+    return explicitKey;
   }
 
   return getLegacyTokenKey();
-}
-
-function getDecryptionKeys() {
-  const primary = getExplicitTokenKey();
-  const legacy = getLegacyTokenKey();
-
-  if (!primary) return [legacy];
-
-  return primary.equals(legacy) ? [primary] : [primary, legacy];
 }
 
 function encode(value: Buffer) {
@@ -86,14 +95,33 @@ export function decryptPlaidAccessToken(ciphertext: string) {
     throw new Error("Unsupported Plaid access token ciphertext.");
   }
 
-  for (const key of getDecryptionKeys()) {
+  const primary = getRequiredExplicitTokenKey();
+  const attemptedKeys = primary ? [primary] : [getLegacyTokenKey()];
+
+  for (const key of attemptedKeys) {
     try {
       const decipher = createDecipheriv(TOKEN_ALGORITHM, key, decode(iv));
       decipher.setAuthTag(decode(tag));
 
       return Buffer.concat([decipher.update(decode(encrypted)), decipher.final()]).toString("utf8");
     } catch {
-      // Try the next known key. Production can read legacy ciphertext after key rotation.
+      // Fall through to the legacy fallback below when an explicit key is configured.
+    }
+  }
+
+  if (primary) {
+    try {
+      const legacy = getLegacyTokenKey();
+      if (!primary.equals(legacy)) {
+        const decipher = createDecipheriv(TOKEN_ALGORITHM, legacy, decode(iv));
+        decipher.setAuthTag(decode(tag));
+
+        return Buffer.concat([decipher.update(decode(encrypted)), decipher.final()]).toString("utf8");
+      }
+    } catch (error) {
+      if (error instanceof PlaidConfigurationError) {
+        throw new PlaidTokenDecryptionError();
+      }
     }
   }
 

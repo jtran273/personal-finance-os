@@ -49,7 +49,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `PLAID_SECRET` | Server only | Optional fallback | Generic Plaid secret fallback. Prefer scoped secrets below. |
 | `PLAID_SANDBOX_SECRET` | Server only | Sandbox yes | Used before `PLAID_SECRET` when `PLAID_ENV=sandbox`. |
 | `PLAID_PRODUCTION_SECRET` | Server only | Production yes | Used before `PLAID_SECRET` when `PLAID_ENV=production`. |
-| `PLAID_TOKEN_ENCRYPTION_KEY` | Server only | Production yes | Dedicated AES-GCM key material for stored Plaid access tokens. Keep stable. |
+| `PLAID_TOKEN_ENCRYPTION_KEY` | Server only | Production yes | Dedicated AES-GCM key material for stored Plaid access tokens. Required whenever `PLAID_ENV=production` or the app runs in production. Keep stable. |
 | `PLAID_ENV` | Server only | Yes | `sandbox` or `production`. Use `sandbox` locally. |
 | `PLAID_REDIRECT_URI` | Server only | Production OAuth recommended | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. Local `http://localhost` redirects are ignored for production Link tokens because Plaid only permits them in Sandbox. |
 | `OPENAI_API_KEY` | Server only | Optional | Enables server-side OpenAI suggestion provider. |
@@ -65,7 +65,9 @@ Generate `PLAID_TOKEN_ENCRYPTION_KEY`:
 openssl rand -base64 32
 ```
 
-Existing Plaid access tokens may have been encrypted with the legacy Plaid-derived key. The app can still decrypt those legacy tokens for sync, but production encryption for new connections requires `PLAID_TOKEN_ENCRYPTION_KEY`. Do not rotate Plaid secrets or the explicit token key without confirming existing items still sync.
+Store this value as a server-only secret in Vercel Production and in any preview or local `.env.local` that uses `PLAID_ENV=production`. Use the same value everywhere that needs to read the same `plaid_items.access_token_ciphertext` rows.
+
+Existing Plaid access tokens may have been encrypted with the legacy Plaid-derived key. After `PLAID_TOKEN_ENCRYPTION_KEY` is configured, the app can try that legacy key as a fallback for old rows, but new production reads and writes fail fast if the explicit key is missing. Do not rotate Plaid secrets or the explicit token key without confirming existing items still sync. If neither the explicit key nor the compatible legacy key can decrypt an item, the institution must be reconnected.
 
 ## Supabase Setup
 

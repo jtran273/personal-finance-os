@@ -169,7 +169,7 @@ function buildReasons(
   if (group.amountKind === "partial") {
     reasons.push(`${roundMoney(expectedAmount - group.matchedAmount)} remains unmatched.`);
   } else if (group.amountKind === "over") {
-    reasons.push(`${roundMoney(group.matchedAmount - expectedAmount)} would remain outside the reimbursement match.`);
+    reasons.push(`Inflow exceeds the outstanding reimbursement by ${roundMoney(group.matchedAmount - expectedAmount)}.`);
   }
 
   return reasons;

@@ -10,11 +10,12 @@ import styles from "./transactions.module.css";
 interface MerchantCleanupPanelProps {
   categories: CategoryRecord[];
   defaultQuery: string;
+  isDemo: boolean;
 }
 
 const initialState: MerchantCleanupActionState = {};
 
-export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantCleanupPanelProps) {
+export function MerchantCleanupPanel({ categories, defaultQuery, isDemo }: MerchantCleanupPanelProps) {
   const [state, formAction, isPending] = useActionState(applyMerchantCleanupAction, initialState);
   const hasDefaultQuery = defaultQuery.trim().length > 0;
   const [expandedOverride, setExpandedOverride] = useState<boolean | null>(null);
@@ -39,7 +40,18 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
       </div>
       {expanded ? (
         <>
-          <form action={formAction} className={styles.cleanupForm}>
+          {isDemo ? (
+            <div className={styles.formSuccess} role="status">
+              Merchant cleanup is preview-only in the demo. Sign in to save cleanup rules against real transactions.
+            </div>
+          ) : null}
+          <form
+            action={formAction}
+            className={styles.cleanupForm}
+            onSubmit={(event) => {
+              if (isDemo) event.preventDefault();
+            }}
+          >
             <label className={styles.field}>
               <span>Match text</span>
               <input
@@ -76,9 +88,9 @@ export function MerchantCleanupPanel({ categories, defaultQuery }: MerchantClean
               <span>Save rule</span>
             </label>
 
-            <button className={styles.primaryButton} disabled={isPending || categoryGroups.length === 0} type="submit">
+            <button className={styles.primaryButton} disabled={isDemo || isPending || categoryGroups.length === 0} type="submit">
               <WandSparkles size={14} aria-hidden />
-              {isPending ? "Applying..." : "Apply cleanup"}
+              {isDemo ? "Read-only demo" : isPending ? "Applying..." : "Apply cleanup"}
             </button>
           </form>
 

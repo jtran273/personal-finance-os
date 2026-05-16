@@ -11,6 +11,7 @@ import {
   type TransactionTag,
   type UserTransactionIntent
 } from "@/lib/finance/classification";
+import { isManualTransactionEditResolvableReview } from "@/lib/review/reasons";
 import { ArrowLeft, Save } from "lucide-react";
 import Link from "next/link";
 import { type ChangeEvent, useActionState, useState } from "react";
@@ -19,6 +20,7 @@ import styles from "./transactions.module.css";
 
 interface TransactionEditFormProps {
   categories: CategoryRecord[];
+  isDemo: boolean;
   transaction: TransactionRecord;
 }
 
@@ -47,7 +49,7 @@ function reviewStatusLabel(transaction: TransactionRecord) {
   return "No review item";
 }
 
-export function TransactionEditForm({ categories, transaction }: TransactionEditFormProps) {
+export function TransactionEditForm({ categories, isDemo, transaction }: TransactionEditFormProps) {
   const [state, formAction, isPending] = useActionState(updateTransactionAction, initialState);
   const categoryGroups = categoryOptionGroups(categories);
   const initialCategoryId = isTransferCategoryName(transaction.category)
@@ -57,6 +59,11 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
   const [baseIntent, setBaseIntent] = useState<UserTransactionIntent>(displayTransactionIntent(transaction.intent));
   const [newCategoryName, setNewCategoryName] = useState("");
   const [tag, setTag] = useState<TransactionTag>(transactionTagFromIntent(transaction.intent));
+  const canClearReview = transaction.reviewItems.some((item) => (
+    item.status === "open" &&
+    isManualTransactionEditResolvableReview(item.reason) &&
+    (item.reason !== "missing-category" || categoryId !== "none" || tag === "transfer")
+  ));
 
   function handleCategoryChange(event: ChangeEvent<HTMLSelectElement>) {
     setCategoryId(event.target.value);
@@ -80,8 +87,20 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
       </div>
 
       <div className={styles.editGrid}>
-        <form action={formAction} className={styles.editPanel}>
+        <form
+          action={formAction}
+          className={styles.editPanel}
+          onSubmit={(event) => {
+            if (isDemo) event.preventDefault();
+          }}
+        >
           <input name="transactionId" type="hidden" value={transaction.id} />
+
+          {isDemo ? (
+            <div className={styles.formSuccess} role="status">
+              Demo transactions are read-only. Sign in to save enrichment changes to your own account.
+            </div>
+          ) : null}
 
           <label className={styles.field}>
             <span>Merchant</span>
@@ -191,9 +210,9 @@ export function TransactionEditForm({ categories, transaction }: TransactionEdit
           ) : null}
 
           <div className={styles.buttonRow}>
-            <button className={styles.primaryButton} disabled={isPending} type="submit">
+            <button className={styles.primaryButton} disabled={isDemo || isPending} type="submit">
               <Save size={14} aria-hidden />
-              {isPending ? "Saving..." : "Save"}
+              {isDemo ? "Read-only demo" : isPending ? "Saving..." : canClearReview ? "Save and clear review" : "Save"}
             </button>
             <Link className={styles.secondaryButton} href="/transactions">
               Cancel

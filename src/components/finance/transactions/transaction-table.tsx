@@ -1,6 +1,7 @@
 import type { AccountRecord, ReviewItemRecord, ReviewReason, ReviewStatus, TransactionRecord } from "@/lib/db";
 import { displayCategoryName, isTransferCategoryName } from "@/lib/finance/classification";
 import { summarizeTransactionReimbursement, type TransactionReimbursementState } from "@/lib/finance/reimbursements";
+import type { PlaidConnectionIssue } from "@/lib/plaid/status";
 import { isRecurringReview } from "@/lib/review/reasons";
 import {
   ArrowLeftRight,
@@ -19,6 +20,7 @@ interface TransactionTableProps {
   accountOnlyFilter: boolean;
   filtersActive: boolean;
   limit: number;
+  selectedAccountIssue: PlaidConnectionIssue | null;
   selectedAccount: AccountRecord | null;
   transactions: TransactionRecord[];
 }
@@ -79,13 +81,18 @@ function formatUnsignedMoney(value: number) {
   return moneyFormatter.format(Math.abs(value));
 }
 
-function categoryQuality(transaction: TransactionRecord) {
-  const issues: string[] = [];
-  if (transaction.confidence < 0.75) issues.push("Low confidence");
-  if (needsCategory(transaction)) {
-    issues.push("Uncategorized");
+function confidenceLabel(confidence: number) {
+  return `${Math.round(confidence * 100)}%`;
+}
+
+function confidenceCopy(transaction: TransactionRecord) {
+  if (transaction.confidence >= 0.95 || transaction.reviewedAt) {
+    return "Trusted manual review";
   }
-  return issues;
+  if (transaction.confidence < 0.75) {
+    return `Confidence ${confidenceLabel(transaction.confidence)} from import classification. Review before trusting.`;
+  }
+  return `Confidence ${confidenceLabel(transaction.confidence)} from import classification.`;
 }
 
 function needsCategory(transaction: TransactionRecord) {
@@ -165,8 +172,17 @@ function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolea
   return filtersActive ? "No rows match the current filters" : "No persisted transactions yet";
 }
 
-function emptyTransactionCopy(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {
+function emptyTransactionCopy(
+  filtersActive: boolean,
+  accountOnlyFilter: boolean,
+  selectedAccount: AccountRecord | null,
+  selectedAccountIssue: PlaidConnectionIssue | null
+) {
   if (accountOnlyFilter && selectedAccount) {
+    if (selectedAccountIssue?.action === "reconnect") {
+      return `${selectedAccountIssue.detail} The saved balance can remain visible even though no transaction rows are importing.`;
+    }
+
     if (selectedAccount.type === "investment" || selectedAccount.type === "retirement") {
       return "This account can be connected and show balances even when Plaid Transactions does not return posted rows for it.";
     }
@@ -210,6 +226,7 @@ export function TransactionTable({
   accountOnlyFilter,
   filtersActive,
   limit,
+  selectedAccountIssue,
   selectedAccount,
   transactions
 }: TransactionTableProps) {
@@ -220,7 +237,7 @@ export function TransactionTable({
           {emptyTransactionTitle(filtersActive, accountOnlyFilter, selectedAccount)}
         </div>
         <div className={styles.emptyCopy}>
-          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount)}
+          {emptyTransactionCopy(filtersActive, accountOnlyFilter, selectedAccount, selectedAccountIssue)}
         </div>
         {filtersActive ? (
           <div className={styles.emptyActions}>
@@ -249,11 +266,12 @@ export function TransactionTable({
             {transactions.map((transaction) => {
               const actionableReview = transaction.reviewItems.find((review) => review.status === "open" && !isRecurringReview(review.reason));
               const hasRecurringSignal = transaction.reviewItems.some((review) => review.status === "open" && isRecurringReview(review.reason));
-              const qualityIssues = categoryQuality(transaction);
               const reimbursement = summarizeTransactionReimbursement(transaction);
               const transferTagged = transaction.intent === "transfer" || isTransferCategoryName(transaction.category);
               const isUncategorized = needsCategory(transaction);
               const suggestedCategory = isUncategorized ? suggestedCategoryName(transaction) : null;
+              const confidenceNeedsReview = transaction.confidence < 0.75 && !transaction.reviewedAt;
+              const showConfidenceContext = confidenceNeedsReview || Boolean(transaction.reviewedAt);
 
               return (
                 <tr
@@ -296,13 +314,6 @@ export function TransactionTable({
                           </StatusBadge>
                         ) : null}
                       </div>
-                      {qualityIssues.length > 0 ? (
-                        <div className={styles.qualityBadges}>
-                          {qualityIssues.map((issue) => (
-                            <span className={styles.qualityBadge} key={issue}>{issue}</span>
-                          ))}
-                        </div>
-                      ) : null}
                       {reimbursement.state !== "none" ? (
                         <div className={styles.reimbursementLine}>
                           {formatUnsignedMoney(reimbursement.outstandingAmount)} outstanding from {formatUnsignedMoney(reimbursement.reimbursableAmount)} reimbursable
@@ -316,8 +327,16 @@ export function TransactionTable({
                   <td data-label="Category">
                     <div className={styles.categoryCell}>
                       <span>{displayCategoryName(transaction.category)}</span>
+                      {showConfidenceContext ? (
+                        <span className={confidenceNeedsReview ? styles.categoryWarning : styles.categoryHint} title={confidenceCopy(transaction)}>
+                          {confidenceCopy(transaction)}
+                        </span>
+                      ) : null}
                       {suggestedCategory ? (
                         <span className={styles.categoryHint}>Suggested: {suggestedCategory}</span>
+                      ) : null}
+                      {isUncategorized ? (
+                        <span className={styles.categoryWarning}>Needs a real category</span>
                       ) : null}
                       {isUncategorized ? (
                         actionableReview ? (

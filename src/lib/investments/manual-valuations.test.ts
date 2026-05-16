@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { AccountRecord } from "@/lib/db";
-import { applyManualInvestmentValuations, parseManualInvestmentHoldings } from "./manual-valuations";
+import {
+  applyManualInvestmentValuations,
+  buildManualInvestmentSnapshotRows,
+  parseManualInvestmentHoldings
+} from "./manual-valuations";
 
 const fidelityAccount: AccountRecord = {
   availableBalance: 42_890.55,
@@ -80,4 +84,50 @@ test("applyManualInvestmentValuations falls back to saved balance when quotes fa
 
   assert.equal(accounts[0]?.balance, 42_890.55);
   assert.equal(accounts[0]?.manualValuation, undefined);
+});
+
+test("buildManualInvestmentSnapshotRows emits one row per priced manual account", async () => {
+  const priced = await applyManualInvestmentValuations([fidelityAccount], {
+    env: { FIDELITY_HOLDINGS: "FZROX:100,cash:25" },
+    quoteProvider: async (symbol) => ({
+      asOf: "2026-05-15T12:00:00.000Z",
+      price: 25,
+      symbol
+    })
+  });
+  const rows = buildManualInvestmentSnapshotRows(priced, "user-1", "2026-05-15");
+
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0], {
+    account_id: "account-fidelity",
+    available_balance: 25,
+    credit_limit: null,
+    current_balance: 2525,
+    iso_currency_code: "USD",
+    snapshot_date: "2026-05-15",
+    source: "manual",
+    user_id: "user-1"
+  });
+});
+
+test("buildManualInvestmentSnapshotRows skips accounts without a manual valuation", () => {
+  const rows = buildManualInvestmentSnapshotRows([fidelityAccount], "user-1", "2026-05-15");
+  assert.equal(rows.length, 0);
+});
+
+test("parseManualInvestmentHoldings ignores malformed JSON in MANUAL_INVESTMENT_HOLDINGS", () => {
+  const configs = parseManualInvestmentHoldings({
+    MANUAL_INVESTMENT_HOLDINGS: "not-json"
+  });
+  assert.deepEqual(configs, []);
+});
+
+test("parseManualInvestmentHoldings drops invalid tickers and non-positive shares", () => {
+  const configs = parseManualInvestmentHoldings({
+    FIDELITY_HOLDINGS: "FZROX:195.867, BADTICKERTHATISWAYTOOLONG:5, NEGSHARES:-3, cash:0"
+  });
+
+  assert.equal(configs.length, 1);
+  assert.deepEqual(configs[0]?.holdings, [{ shares: 195.867, symbol: "FZROX" }]);
+  assert.equal(configs[0]?.cash, 0);
 });

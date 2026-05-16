@@ -15,7 +15,7 @@ import {
 } from "@/lib/finance/classification";
 import type { NormalizedReviewSuggestion } from "@/lib/review/suggestions";
 import { Check, Plus, Trash2 } from "lucide-react";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useMemo, useState, useSyncExternalStore } from "react";
 import {
   resolvePeerToPeerReviewAction,
   type ReviewActionState
@@ -25,6 +25,7 @@ import styles from "./review.module.css";
 interface PeerToPeerSplitFormProps {
   categories: CategoryRecord[];
   defaultExplanation: string;
+  isDemo: boolean;
   reviewItemId: string;
   suggestion: NormalizedReviewSuggestion;
   transaction: TransactionRecord;
@@ -41,6 +42,7 @@ interface SplitRowState {
 }
 
 const initialState: ReviewActionState = {};
+const mobileViewportQuery = "(max-width: 760px)";
 
 const moneyFormatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
@@ -61,6 +63,22 @@ function amountToCents(value: string) {
 
 function formatMoneyFromCents(cents: number) {
   return moneyFormatter.format(cents / 100);
+}
+
+function subscribeToMobileViewport(onStoreChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const mediaQuery = window.matchMedia(mobileViewportQuery);
+  mediaQuery.addEventListener("change", onStoreChange);
+  return () => mediaQuery.removeEventListener("change", onStoreChange);
+}
+
+function getMobileViewportSnapshot() {
+  return typeof window !== "undefined" && window.matchMedia(mobileViewportQuery).matches;
+}
+
+function getServerMobileViewportSnapshot() {
+  return false;
 }
 
 function findCategoryId(categories: CategoryRecord[], categoryName: string | undefined) {
@@ -128,11 +146,13 @@ function buildInitialRows({
 export function PeerToPeerSplitForm({
   categories,
   defaultExplanation,
+  isDemo,
   reviewItemId,
   suggestion,
   transaction
 }: PeerToPeerSplitFormProps) {
   const [state, formAction, isPending] = useActionState(resolvePeerToPeerReviewAction, initialState);
+  const [isMobileFormExpanded, setIsMobileFormExpanded] = useState(false);
   const [explanation, setExplanation] = useState(defaultExplanation);
   const [rows, setRows] = useState(() => buildInitialRows({ categories, suggestion, transaction }));
   const totalCents = useMemo(() => amountToCents(String(transaction.amount)), [transaction.amount]);
@@ -141,6 +161,11 @@ export function PeerToPeerSplitForm({
   const fullyAllocated = remainingCents === 0;
   const fallbackCategoryId = defaultCategoryId(categories, suggestion, transaction);
   const categoryGroups = categoryOptionGroups(categories);
+  const isMobileViewport = useSyncExternalStore(
+    subscribeToMobileViewport,
+    getMobileViewportSnapshot,
+    getServerMobileViewportSnapshot
+  );
 
   function updateRow(id: string, patch: Partial<SplitRowState>) {
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -165,9 +190,36 @@ export function PeerToPeerSplitForm({
     setRows((current) => current.filter((row) => row.id !== id));
   }
 
+  if (isMobileViewport && !isMobileFormExpanded) {
+    return (
+      <div className={styles.peerSummaryPanel} aria-label="Peer-to-peer split editor">
+        <div>
+          <strong>Split needed</strong>
+          <span>{fullyAllocated ? "Fully allocated preview" : `${formatMoneyFromCents(Math.abs(remainingCents))} ${remainingCents > 0 ? "left" : "over"}`}</span>
+        </div>
+        <button className={styles.secondaryButton} onClick={() => setIsMobileFormExpanded(true)} type="button">
+          <Plus size={14} aria-hidden />
+          Edit split
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <form action={formAction} className={styles.peerForm}>
+    <form
+      action={formAction}
+      className={styles.peerForm}
+      onSubmit={(event) => {
+        if (isDemo) event.preventDefault();
+      }}
+    >
       <input name="reviewItemId" type="hidden" value={reviewItemId} />
+
+      {isDemo ? (
+        <div className={styles.inlineSuccess} role="status">
+          Peer-to-peer split editing is preview-only in demo mode.
+        </div>
+      ) : null}
 
       <label className={styles.field}>
         <span>Explanation</span>
@@ -308,11 +360,11 @@ export function PeerToPeerSplitForm({
         </button>
         <button
           className={styles.primaryButton}
-          disabled={isPending || !fullyAllocated || explanation.trim().length < 6}
+          disabled={isDemo || isPending || !fullyAllocated || explanation.trim().length < 6}
           type="submit"
         >
           <Check size={14} aria-hidden />
-          {isPending ? "Saving..." : "Save and resolve"}
+          {isDemo ? "Read-only demo" : isPending ? "Saving..." : "Save and resolve"}
         </button>
       </div>
     </form>

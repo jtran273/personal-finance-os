@@ -62,6 +62,10 @@ Server-only secrets:
 - `GOOGLE_CALENDAR_REDIRECT_URI`
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY`
 - `OPENAI_API_KEY`
+- `CRON_SECRET`
+- `OPENCLAW_TOKEN`
+- `OPENCLAW_USER_ID`
+- `PROACTIVE_SCAN_USER_ID`
 
 Browser-exposed values:
 
@@ -178,6 +182,8 @@ The scheduled sync route `/api/plaid/sync/scheduled`, proactive scan route `/api
 
 The Google Calendar OAuth callback is a browser redirect and uses a short-lived HTTP-only OAuth state cookie plus Supabase session verification instead of the same-origin POST guard.
 
+The CSV export route is a credentialed read rather than a mutation. It rejects cross-site browser reads and returns `Cache-Control: no-store` so filtered enriched transaction exports cannot be read cross-origin or cached by shared intermediaries.
+
 The helper accepts the app origin, forwarded host origin, `NEXT_PUBLIC_APP_URL`, and `VERCEL_URL`. In production, requests without an `Origin` header are rejected.
 
 Server actions also rely on Next.js server action origin checks and Supabase session verification.
@@ -233,7 +239,7 @@ Privileged route handlers should use `logSafeError()` instead of logging raw err
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production.
 - `GOOGLE_CALENDAR_TOKEN_ENCRYPTION_KEY` is set before enabling Google Calendar.
 - `NEXT_PUBLIC_APP_URL` is the canonical HTTPS production URL.
-- `PLAID_REDIRECT_URI` is HTTPS and registered in Plaid.
+- `PLAID_REDIRECT_URI` is unset for ordinary Plaid Link sessions, or HTTPS and registered in Plaid when OAuth redirects are required.
 - `GOOGLE_CALENDAR_REDIRECT_URI` is HTTPS and registered in Google Cloud when Calendar is enabled.
 - Supabase Auth is enabled.
 - Supabase migrations are applied.

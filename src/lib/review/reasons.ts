@@ -91,3 +91,7 @@ export function isPeerToPeerReview(reason: ReviewReason) {
 export function isRecurringReview(reason: ReviewReason) {
   return recurringReviewReasons.has(reason);
 }
+
+export function isManualTransactionEditResolvableReview(reason: ReviewReason) {
+  return !isPeerToPeerReview(reason) && !isRecurringReview(reason);
+}

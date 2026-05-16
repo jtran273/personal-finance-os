@@ -18,6 +18,7 @@ import styles from "./review.module.css";
 
 interface ReviewTransactionEditFormProps {
   categories: CategoryRecord[];
+  isDemo: boolean;
   reviewItemId: string;
   transaction: TransactionRecord;
 }
@@ -26,6 +27,7 @@ const initialState: ReviewActionState = {};
 
 export function ReviewTransactionEditForm({
   categories,
+  isDemo,
   reviewItemId,
   transaction
 }: ReviewTransactionEditFormProps) {
@@ -62,8 +64,20 @@ export function ReviewTransactionEditForm({
   }
 
   return (
-    <form action={formAction} className={styles.inlineEditForm}>
+    <form
+      action={formAction}
+      className={styles.inlineEditForm}
+      onSubmit={(event) => {
+        if (isDemo) event.preventDefault();
+      }}
+    >
       <input name="reviewItemId" type="hidden" value={reviewItemId} />
+
+      {isDemo ? (
+        <div className={styles.inlineSuccess} role="status">
+          Inline transaction edits are preview-only in demo mode.
+        </div>
+      ) : null}
 
       <div className={styles.inlineEditGrid}>
         <label className={styles.field}>
@@ -159,9 +173,9 @@ export function ReviewTransactionEditForm({
       ) : null}
 
       <div className={styles.inlineEditActions}>
-        <button className={styles.primaryButton} disabled={isPending} type="submit">
+        <button className={styles.primaryButton} disabled={isDemo || isPending} type="submit">
           <Save size={14} aria-hidden />
-          {isPending ? "Saving..." : "Save and finalize"}
+          {isDemo ? "Read-only demo" : isPending ? "Saving..." : "Save and finalize"}
         </button>
         <button className={styles.secondaryButton} disabled={isPending} onClick={() => setIsOpen(false)} type="button">
           <X size={14} aria-hidden />

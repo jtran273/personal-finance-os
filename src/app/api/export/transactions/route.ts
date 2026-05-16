@@ -47,6 +47,9 @@ function exportFilename(filters: TransactionFilterState) {
   if (filters.intent !== "all") {
     parts.push(filters.intent);
   }
+  if (filters.direction !== "all") {
+    parts.push(filters.direction);
+  }
   if (filters.reviewStatus !== "all") {
     parts.push(`review-${filters.reviewStatus}`);
   }

@@ -39,9 +39,11 @@ export default async function RecurringPage() {
   let recurringExpenses: RecurringExpenseRecord[] = [];
   let transactions: TransactionRecord[] = [];
   let accounts: AccountRecord[] = [];
+  let isDemo = false;
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
@@ -76,6 +78,7 @@ export default async function RecurringPage() {
       candidates={candidates}
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
       recurringExpenses={recurringExpenses}
       upcomingCashflow={buildUpcomingCashflowTimeline({

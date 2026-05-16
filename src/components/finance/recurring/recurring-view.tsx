@@ -1,5 +1,6 @@
 import type { RecurringExpenseRecord } from "@/lib/db";
 import { monthlyRecurringEquivalent, type UpcomingCashflowTimelineSummary } from "@/lib/finance/cashflow";
+import { LinkButton, MetricCard, Notice } from "@/components/ui/primitives";
 import type { RecurringCandidate } from "@/lib/recurring";
 import {
   BadgeAlert,
@@ -7,10 +8,8 @@ import {
   Repeat,
   ShieldCheck,
   Sparkles,
-  TriangleAlert,
-  type LucideIcon
+  TriangleAlert
 } from "lucide-react";
-import Link from "next/link";
 import { RecurringCandidateActions } from "./recurring-candidate-actions";
 import styles from "./recurring.module.css";
 
@@ -18,6 +17,7 @@ interface RecurringViewProps {
   candidates: RecurringCandidate[];
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
   recurringExpenses: RecurringExpenseRecord[];
   upcomingCashflow: UpcomingCashflowTimelineSummary;
@@ -100,33 +100,13 @@ function formatSignedMoney(value: number) {
   return `${value > 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
 }
 
-function SummaryCard({
-  detail,
-  icon: Icon,
-  tone,
-  value
-}: {
-  detail: string;
-  icon: LucideIcon;
-  tone?: "trusted" | "warn";
-  value: string;
-}) {
-  return (
-    <div className={`${styles.summaryCard} ${tone ? styles[tone] : ""}`}>
-      <span className={styles.summaryLabel}>
-        <Icon size={13} aria-hidden />
-        {detail}
-      </span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function TrackedTable({
   candidateByRecurringId,
+  isDemo,
   recurringExpenses
 }: {
   candidateByRecurringId: Map<string, RecurringCandidate>;
+  isDemo: boolean;
   recurringExpenses: RecurringExpenseRecord[];
 }) {
   return (
@@ -172,6 +152,7 @@ function TrackedTable({
                   {isActionable ? (
                     <RecurringCandidateActions
                       candidateId={candidate?.id}
+                      isDemo={isDemo}
                       merchant={expense.merchant}
                       recurringExpenseId={expense.id}
                     />
@@ -201,7 +182,7 @@ function TrackedTable({
   );
 }
 
-function CandidateTable({ candidates }: { candidates: RecurringCandidate[] }) {
+function CandidateTable({ candidates, isDemo }: { candidates: RecurringCandidate[]; isDemo: boolean }) {
   return (
     <section className={styles.panel}>
       <div className={styles.panelHead}>
@@ -245,6 +226,7 @@ function CandidateTable({ candidates }: { candidates: RecurringCandidate[] }) {
               <div className={styles.actionCell}>
                 <RecurringCandidateActions
                   candidateId={candidate.id}
+                  isDemo={isDemo}
                   merchant={candidate.merchant}
                   recurringExpenseId={candidate.existingRecurringId ?? undefined}
                 />
@@ -310,6 +292,7 @@ export function RecurringView({
   candidates,
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn,
   recurringExpenses,
   upcomingCashflow
@@ -350,47 +333,49 @@ export function RecurringView({
   return (
     <div className={styles.shell}>
       <section className={styles.summaryGrid} aria-label="Recurring summary">
-        <SummaryCard
-          detail="Tracked recurring"
-          icon={Repeat}
+        <MetricCard
+          label={<><Repeat size={13} aria-hidden />Tracked recurring</>}
           value={recurringExpenses.length.toLocaleString("en-US")}
-          tone={recurringExpenses.some((expense) => expense.status === "pending") ? "warn" : undefined}
+          tone={recurringExpenses.some((expense) => expense.status === "pending") ? "warning" : "neutral"}
         />
-        <SummaryCard
-          detail="Monthly estimate"
-          icon={CalendarClock}
+        <MetricCard
+          label={<><CalendarClock size={13} aria-hidden />Monthly estimate</>}
           value={formatMoney(monthlyTotal)}
           tone="trusted"
         />
-        <SummaryCard
-          detail="To confirm"
-          icon={BadgeAlert}
+        <MetricCard
+          label={<><BadgeAlert size={13} aria-hidden />To confirm</>}
           value={needsAttention.toLocaleString("en-US")}
-          tone={needsAttention > 0 ? "warn" : undefined}
+          tone={needsAttention > 0 ? "warning" : "neutral"}
         />
-        <SummaryCard
-          detail="New candidates"
-          icon={Sparkles}
+        <MetricCard
+          label={<><Sparkles size={13} aria-hidden />New candidates</>}
           value={additionalCandidates.length.toLocaleString("en-US")}
         />
       </section>
 
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so recurring data cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in with Supabase Auth to load recurring patterns from your Plaid transactions.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
+      ) : null}
+
+      {isDemo && canShowData ? (
+        <Notice role="status">
+          Demo recurring patterns are read-only. Sign in to confirm or dismiss real recurring rows.
+        </Notice>
       ) : null}
 
       {!canShowData ? null : recurringExpenses.length === 0 && additionalCandidates.length === 0 ? (
@@ -400,21 +385,21 @@ export function RecurringView({
             <strong>No recurring patterns detected</strong>
             <span>The detector scanned persisted Plaid transactions and did not find a repeated cadence yet.</span>
           </div>
-          <Link className={styles.secondaryButton} href="/transactions">
+          <LinkButton href="/transactions">
             Open transactions
-          </Link>
+          </LinkButton>
         </div>
       ) : (
         <>
           {candidateMonthlyTotal > monthlyTotal ? (
-            <div className={styles.notice} role="status">
+            <Notice role="status" tone="warning">
               <TriangleAlert size={14} aria-hidden />
               Detected candidates estimate {formatMoney(candidateMonthlyTotal)} per month from real Plaid rows before review.
-            </div>
+            </Notice>
           ) : null}
           <UpcomingCashflowPanel summary={upcomingCashflow} />
-          <TrackedTable candidateByRecurringId={candidateByRecurringId} recurringExpenses={visibleRecurringExpenses} />
-          <CandidateTable candidates={additionalCandidates} />
+          <TrackedTable candidateByRecurringId={candidateByRecurringId} isDemo={isDemo} recurringExpenses={visibleRecurringExpenses} />
+          <CandidateTable candidates={additionalCandidates} isDemo={isDemo} />
         </>
       )}
     </div>

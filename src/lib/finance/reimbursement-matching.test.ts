@@ -117,6 +117,14 @@ test("suggestReimbursementMatches excludes payroll, transfers, negative, and alr
   assert.deepEqual(suggestions, []);
 });
 
+test("suggestReimbursementMatches excludes inflows far above the expected reimbursement", () => {
+  const suggestions = suggestReimbursementMatches([expense()], [
+    inflow({ amount: 1000, id: "large-venmo", merchant: "Venmo - Chris L." })
+  ]);
+
+  assert.deepEqual(suggestions, []);
+});
+
 test("suggestReimbursementMatches lowers confidence when amount, timing, and category are weak", () => {
   const suggestions = suggestReimbursementMatches([
     expense({

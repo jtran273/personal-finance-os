@@ -32,10 +32,12 @@ import {
 } from "@/lib/finance/classification";
 import { isSpendingIntent } from "@/lib/finance/spending";
 import { attachAiSuggestionsToReviewItems } from "@/lib/review/ai-suggestions";
-import { isPeerToPeerReview } from "@/lib/review/reasons";
+import { isManualTransactionEditResolvableReview, isPeerToPeerReview } from "@/lib/review/reasons";
 import {
   buildAcceptedReviewSuggestionPatch,
+  describeReviewSuggestionRefresh,
   hasReviewSuggestionValue,
+  normalizeReviewSuggestion,
   type NormalizedReviewSuggestion
 } from "@/lib/review/suggestions";
 import { loadRecentUserCorrections } from "@/lib/review/user-corrections";
@@ -534,6 +536,7 @@ export async function generateReviewSuggestionAction(
       return { error: "Unable to load the transaction context for this suggestion." };
     }
 
+    const previousSuggestion = normalizeReviewSuggestion(item.aiSuggestion);
     const targets = [{
       ai_suggestion: item.aiSuggestion,
       confidence: item.confidence,
@@ -597,7 +600,12 @@ export async function generateReviewSuggestionAction(
     });
 
     revalidateReviewPaths(item.transaction.id);
-    return { message: "Suggestion generated." };
+    return {
+      message: describeReviewSuggestionRefresh(
+        previousSuggestion,
+        normalizeReviewSuggestion(suggestion.ai_suggestion)
+      )
+    };
   } catch (error) {
     return errorState(error);
   }
@@ -656,7 +664,7 @@ export async function editReviewTransactionAction(
       source: "manual" as const
     };
     const relatedItems = (await listOpenReviewItemsForTransaction(client, userId, item))
-      .filter((candidate) => !isPeerToPeerReview(candidate.reason));
+      .filter((candidate) => isManualTransactionEditResolvableReview(candidate.reason));
     const itemsToResolve = relatedItems.length > 0 ? relatedItems : [item];
     const resolvedItems = [];
 

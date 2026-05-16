@@ -9,6 +9,7 @@ import {
 import { transactionSpendingAmount } from "@/lib/finance/spending";
 import { isPeerToPeerReview } from "@/lib/review/reasons";
 import { hasReviewSuggestionValue, normalizeReviewSuggestion } from "@/lib/review/suggestions";
+import { LinkButton, MetricCard, MetricGrid, Notice } from "@/components/ui/primitives";
 import {
   ArrowRight,
   CheckCircle2,
@@ -17,7 +18,6 @@ import {
   Sparkles,
   TriangleAlert
 } from "lucide-react";
-import Link from "next/link";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
@@ -29,6 +29,7 @@ interface ReviewQueueViewProps {
   categories: CategoryRecord[];
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
   reviewItems: ReviewQueueItem[];
   trustedSpending: number;
@@ -112,10 +113,12 @@ function ConfidenceBadge({ value }: { value: number | null | undefined }) {
 function ReviewCard({
   aiProviderKind,
   categories,
+  isDemo,
   item
 }: {
   aiProviderKind: AiSuggestionProviderKind;
   categories: CategoryRecord[];
+  isDemo: boolean;
   item: ReviewQueueItem;
 }) {
   const suggestion = normalizeReviewSuggestion(item.aiSuggestion);
@@ -124,6 +127,7 @@ function ReviewCard({
   const canAccept = !peerToPeer && hasSuggestion;
   const canDismiss = !peerToPeer;
   const canSuggest = !peerToPeer;
+  const sourceLabel = suggestion.sourceLabel ?? (aiProviderKind === "openai" ? "OpenAI" : "Deterministic heuristics");
 
   return (
     <article className={styles.reviewCard} id={`review-${item.id}`}>
@@ -155,9 +159,13 @@ function ReviewCard({
       ) : hasSuggestion ? (
         <div className={styles.suggestionGrid}>
           <div className={styles.suggestionColumn}>
-            <span className={styles.columnLabel}>
-              {aiProviderKind === "openai" ? "Suggestion" : "Rules suggest"}
-            </span>
+            <div className={styles.suggestionSourceLine}>
+              <span className={styles.columnLabel}>Suggested cleanup</span>
+              <span className={styles.sourceBadge}>{sourceLabel}</span>
+            </div>
+            {suggestion.sourceDetail ? (
+              <p className={styles.sourceDetail}>{suggestion.sourceDetail}</p>
+            ) : null}
             <dl className={styles.detailList}>
               <div>
                 <dt>Category</dt>
@@ -186,8 +194,10 @@ function ReviewCard({
         <div className={styles.reasonCallout}>
           <TriangleAlert size={14} aria-hidden />
           <div>
-            <strong>No AI suggestion yet.</strong>
-            <span>Pick a category below to finalize this transaction.</span>
+            <strong>No accept-ready suggestion yet.</strong>
+            <span>
+              This was flagged by {sourceLabel.toLowerCase()}. Generate a fresh suggestion or edit the transaction below.
+            </span>
           </div>
         </div>
       )}
@@ -197,6 +207,7 @@ function ReviewCard({
           <PeerToPeerSplitForm
             categories={categories}
             defaultExplanation={item.transaction.note}
+            isDemo={isDemo}
             reviewItemId={item.id}
             suggestion={suggestion}
             transaction={item.transaction}
@@ -209,10 +220,12 @@ function ReviewCard({
               canDismiss={canDismiss}
               canSuggest={canSuggest}
               hasSuggestion={hasSuggestion}
+              isDemo={isDemo}
               reviewItemId={item.id}
             />
             <ReviewTransactionEditForm
               categories={categories}
+              isDemo={isDemo}
               reviewItemId={item.id}
               transaction={item.transaction}
             />
@@ -229,10 +242,10 @@ function EmptyQueue() {
       <CheckCircle2 size={28} aria-hidden />
       <h2>Queue clear — nice.</h2>
       <p>Every transaction is categorized. New imports only land here when AI is uncertain or a peer-to-peer charge needs explaining.</p>
-      <Link className={styles.secondaryButton} href="/transactions">
+      <LinkButton href="/transactions">
         Open transactions
         <ArrowRight size={14} aria-hidden />
-      </Link>
+      </LinkButton>
     </div>
   );
 }
@@ -243,6 +256,7 @@ export function ReviewQueueView({
   categories,
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn,
   reviewItems,
   trustedSpending
@@ -258,57 +272,68 @@ export function ReviewQueueView({
 
   return (
     <div className={styles.shell}>
-      <section className={styles.summaryGrid} aria-label="Review queue summary">
-        <div className={`${styles.summaryCard} ${reviewItems.length > 0 ? styles.warn : ""}`}>
-          <span className={styles.summaryLabel}>
-            <TriangleAlert size={13} aria-hidden />
-            Needs your input
-          </span>
-          <strong>{reviewItems.length.toLocaleString("en-US")}</strong>
-        </div>
-        <div className={`${styles.summaryCard} ${styles.trusted}`}>
-          <span className={styles.summaryLabel}>
-            <ShieldCheck size={13} aria-hidden />
-            Trusted spending
-          </span>
-          <strong>{formatMoney(trustedSpending)}</strong>
-        </div>
-        <div className={`${styles.summaryCard} ${unresolvedSpending > 0 ? styles.warn : ""}`}>
-          <span className={styles.summaryLabel}>
-            <CircleDollarSign size={13} aria-hidden />
-            Unresolved spending
-          </span>
-          <strong>{formatMoney(unresolvedSpending)}</strong>
-        </div>
+      <section aria-label="Review queue summary">
+        <MetricGrid className={styles.summaryGrid}>
+          <MetricCard
+            label={(
+              <>
+                <TriangleAlert size={13} aria-hidden />
+                Needs your input
+              </>
+            )}
+            tone={reviewItems.length > 0 ? "warning" : "neutral"}
+            value={reviewItems.length.toLocaleString("en-US")}
+          />
+          <MetricCard
+            label={(
+              <>
+                <ShieldCheck size={13} aria-hidden />
+                Trusted spending
+              </>
+            )}
+            tone="trusted"
+            value={formatMoney(trustedSpending)}
+          />
+          <MetricCard
+            label={(
+              <>
+                <CircleDollarSign size={13} aria-hidden />
+                Unresolved spending
+              </>
+            )}
+            tone={unresolvedSpending > 0 ? "warning" : "neutral"}
+            value={formatMoney(unresolvedSpending)}
+          />
+        </MetricGrid>
       </section>
 
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so persisted review items cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in with Supabase Auth to load your persisted review queue.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
       ) : null}
 
       {canShowQueue ? (
-        <div className={styles.notice} role="status">
+        <Notice className={styles.aiNotice} role="status" tone="info">
           <Sparkles size={13} aria-hidden />
           {aiProviderKind === "openai"
             ? aiAutoReviewEnabled
               ? "OpenAI is configured. Automatic cleanup can run on eligible imports, and suggestions still need review unless high-confidence cleanup is audit-backed."
               : "OpenAI is configured for manual clicks. Automatic cleanup is off, so this page does not call OpenAI until you ask for a suggestion."
             : "OpenAI is not configured. Suggestions come from deterministic merchant and Plaid rules only."}
-        </div>
+        </Notice>
       ) : null}
 
       {!canShowQueue ? null : reviewItems.length === 0 ? (
@@ -325,7 +350,7 @@ export function ReviewQueueView({
               </div>
               <div className={styles.cardStack}>
                 {peerToPeerItems.map((item) => (
-                  <ReviewCard aiProviderKind={aiProviderKind} categories={categories} item={item} key={item.id} />
+                  <ReviewCard aiProviderKind={aiProviderKind} categories={categories} isDemo={isDemo} item={item} key={item.id} />
                 ))}
               </div>
             </section>
@@ -341,7 +366,7 @@ export function ReviewQueueView({
               </div>
               <div className={styles.cardStack}>
                 {aiItems.map((item) => (
-                  <ReviewCard aiProviderKind={aiProviderKind} categories={categories} item={item} key={item.id} />
+                  <ReviewCard aiProviderKind={aiProviderKind} categories={categories} isDemo={isDemo} item={item} key={item.id} />
                 ))}
               </div>
             </section>

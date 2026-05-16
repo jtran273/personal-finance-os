@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   createCalendarRouteWriteClient,
   disconnectGoogleCalendarConnection,
@@ -21,6 +22,10 @@ interface CalendarConnectionRouteProps {
 export async function DELETE(request: NextRequest, { params }: CalendarConnectionRouteProps) {
   const originError = requireSameOriginRequest(request);
   if (originError) return originError;
+
+  if (await isDemoMode()) {
+    return jsonNoStore({ error: "Demo mode keeps calendar connections read-only." }, { status: 403 });
+  }
 
   const context = await requireCalendarRouteUser();
   if ("response" in context) return context.response;

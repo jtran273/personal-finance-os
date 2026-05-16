@@ -1,4 +1,7 @@
 import type { AccountRecord, ManualInvestmentHoldingRecord, ManualInvestmentValuationRecord } from "@/lib/db";
+import { listAccounts } from "@/lib/db/queries";
+
+type SnapshotWriterClient = Parameters<typeof listAccounts>[0];
 
 type HoldingConfig = {
   accountId?: string;
@@ -253,4 +256,50 @@ export async function applyManualInvestmentValuations(
       manualValuation: valuation
     };
   });
+}
+
+export function buildManualInvestmentSnapshotRows(
+  accounts: readonly AccountRecord[],
+  userId: string,
+  snapshotDate: string
+) {
+  return accounts
+    .filter((account) => account.manualValuation)
+    .map((account) => ({
+      account_id: account.id,
+      available_balance: account.manualValuation!.cash,
+      credit_limit: null,
+      current_balance: account.manualValuation!.totalValue,
+      iso_currency_code: account.currency,
+      snapshot_date: snapshotDate,
+      source: "manual" as const,
+      user_id: userId
+    }));
+}
+
+export async function recordManualInvestmentSnapshots(
+  client: SnapshotWriterClient,
+  userId: string,
+  snapshotDate: string,
+  options: { env?: ManualInvestmentEnv; quoteProvider?: QuoteProvider } = {}
+): Promise<{ snapshotsWritten: number }> {
+  const baseAccounts = await listAccounts(client, userId);
+  const priced = await applyManualInvestmentValuations(baseAccounts, options);
+  const rows: Record<string, unknown>[] = buildManualInvestmentSnapshotRows(priced, userId, snapshotDate);
+
+  if (rows.length === 0) return { snapshotsWritten: 0 };
+
+  const result = await (client.from("balance_snapshots") as unknown as {
+    upsert: (rows: unknown, options: { onConflict: string }) => {
+      select: (columns: string) => Promise<{ data: { id: string }[] | null; error: { message: string } | null }>;
+    };
+  })
+    .upsert(rows, { onConflict: "user_id,account_id,snapshot_date" })
+    .select("id");
+
+  if (result.error) {
+    throw new Error(`Upsert manual investment snapshots: ${result.error.message}`);
+  }
+
+  return { snapshotsWritten: result.data?.length ?? 0 };
 }

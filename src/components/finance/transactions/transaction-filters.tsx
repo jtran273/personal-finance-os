@@ -8,6 +8,7 @@ import {
 import { Download, Search, SlidersHorizontal, X } from "lucide-react";
 import Link from "next/link";
 import {
+  transactionDirectionOptions,
   transactionFiltersHref,
   transactionReviewOptions,
   type TransactionFilterState
@@ -113,6 +114,14 @@ function buildActiveChips(
       removeHref: withoutKey("categoryId")
     });
   }
+  if (filters.direction !== "all") {
+    const direction = transactionDirectionOptions.find((entry) => entry.value === filters.direction);
+    chips.push({
+      key: "direction",
+      label: direction?.label ?? filters.direction,
+      removeHref: withoutKey("direction")
+    });
+  }
   if (filters.intent !== "all") {
     const tag = transactionTagFromIntent(filters.intent);
     chips.push({
@@ -149,6 +158,7 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
   return (
     <form action="/transactions" className={styles.filters} role="search" aria-label="Transaction filters">
       {/* Preserve URL params not exposed in this form so submission does not drop them. */}
+      {filters.direction !== "all" ? <input name="direction" type="hidden" value={filters.direction} /> : null}
       {filters.intent !== "all" ? <input name="intent" type="hidden" value={filters.intent} /> : null}
       {filters.reviewReason !== "all" ? <input name="reason" type="hidden" value={filters.reviewReason} /> : null}
       {filters.quality !== "all" ? <input name="quality" type="hidden" value={filters.quality} /> : null}
@@ -164,7 +174,7 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
           <input
             defaultValue={filters.search}
             name="q"
-            placeholder="Search merchant, category, account, note..."
+            placeholder="Search merchant..."
             type="search"
           />
         </div>
@@ -187,7 +197,7 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
         </select>
       </label>
 
-      <label className={styles.field}>
+      <label className={`${styles.field} ${styles.mobileOptionalFilter}`}>
         <span>Category</span>
         <select className={styles.selectControl} defaultValue={filters.categoryId} name="category">
           <option value="all">All categories</option>
@@ -197,7 +207,7 @@ export function TransactionFilters({ accounts, categories, filters }: Transactio
         </select>
       </label>
 
-      <label className={styles.field}>
+      <label className={`${styles.field} ${styles.mobileOptionalFilter}`}>
         <span>Review</span>
         <select className={styles.selectControl} defaultValue={filters.reviewStatus} name="review">
           {visibleReviewOptions.map((option) => (

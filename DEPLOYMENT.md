@@ -43,7 +43,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 
 | Name | Scope | Required | Notes |
 | --- | --- | --- | --- |
-| `NEXT_PUBLIC_APP_URL` | Browser/server | Production yes | Canonical app URL. Must be HTTPS in production. Used to derive Plaid redirect URI when `PLAID_REDIRECT_URI` is unset. |
+| `NEXT_PUBLIC_APP_URL` | Browser/server | Production yes | Canonical app URL. Must be HTTPS in production. Not used as a production Plaid Link redirect fallback. |
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser/server | Yes | Supabase project URL. Must be HTTPS in production. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Browser/server | Yes | Supabase anon key. Safe to expose only because RLS is required. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server only | Plaid writes yes | Used by Plaid route handlers for controlled server writes. Never expose to client code. |
@@ -54,7 +54,7 @@ Set local values in `.env.local`. Set Vercel values in Project Settings -> Envir
 | `PLAID_PRODUCTION_SECRET` | Server only | Production yes | Used before `PLAID_SECRET` when `PLAID_ENV=production`. |
 | `PLAID_TOKEN_ENCRYPTION_KEY` | Server only | Production yes | Dedicated AES-GCM key material for stored Plaid access tokens. Keep stable. |
 | `PLAID_ENV` | Server only | Yes | `sandbox` or `production`. Use `sandbox` locally. |
-| `PLAID_REDIRECT_URI` | Server only | Production OAuth recommended | Exact HTTPS redirect URI registered in Plaid. Current production value should be `https://personal-finance-os-jtran273s-projects.vercel.app/settings`. Local `http://localhost` redirects are ignored for production Link tokens because Plaid only permits them in Sandbox. |
+| `PLAID_REDIRECT_URI` | Server only | Production OAuth optional | Leave unset for ordinary web Link sessions. If OAuth institutions require a redirect, set the exact HTTPS URI registered in Plaid. Local `http://localhost` redirects are ignored for production Link tokens because Plaid only permits them in Sandbox. |
 | `GOOGLE_CALENDAR_CLIENT_ID` | Server only | Calendar yes | OAuth client id for read-only Google Calendar access. |
 | `GOOGLE_CALENDAR_CLIENT_SECRET` | Server only | Calendar yes | OAuth client secret for read-only Google Calendar access. |
 | `GOOGLE_CALENDAR_REDIRECT_URI` | Server only | Calendar recommended | Exact OAuth callback registered in Google Cloud. Defaults from `NEXT_PUBLIC_APP_URL` to `/api/calendar/callback`; production must be HTTPS. |
@@ -86,6 +86,7 @@ Existing Plaid access tokens may have been encrypted with the legacy Plaid-deriv
 1. Create or select a Supabase project.
 2. Enable Supabase Auth email/password sign-in.
 3. Apply all SQL files in `supabase/migrations` in order.
+   The Plaid opportunistic sync work requires `supabase/migrations/20260515000100_add_opportunistic_plaid_sync_source.sql`.
 4. Verify RLS is enabled on finance tables.
 5. Verify `plaid_items.access_token_ciphertext`, `plaid_items.plaid_item_id`, and `plaid_items.transaction_cursor` are not selectable by `anon` or `authenticated`.
 6. Verify `raw_transactions.raw_payload`, provider transaction ids, location, and payment metadata are not selectable by `anon` or `authenticated`.
@@ -109,7 +110,7 @@ npm run build
 5. Add environment variables for Preview and Production.
 6. Choose demo visibility intentionally: leave production unset or set `ENABLE_DEMO_MODE=false` to hide the seeded demo entry, or set `ENABLE_DEMO_MODE=true` only when the deployment should expose the seeded demo workspace.
 7. Deploy a Preview build.
-8. Verify login, app routes, Plaid settings, and CSV export.
+8. Verify login, app routes, Plaid settings, compact Accounts cards, and CSV export.
 9. Set `CRON_SECRET`; `vercel.json` schedules `/api/plaid/sync/scheduled` daily at `12:00 UTC`, which is 5:00 AM America/Los_Angeles during daylight saving time. Vercel sends `CRON_SECRET` as the bearer token for cron invocations.
 10. Promote or deploy to Production after checks pass.
 
@@ -132,10 +133,10 @@ Local OAuth redirects may require registering the local URI in Plaid. Non-OAuth 
 2. Set `PLAID_ENV=production`.
 3. Set `PLAID_PRODUCTION_SECRET`.
 4. Set `PLAID_TOKEN_ENCRYPTION_KEY`.
-5. Set `PLAID_REDIRECT_URI=https://personal-finance-os-jtran273s-projects.vercel.app/settings`.
-6. Register the exact redirect URI in the Plaid dashboard.
+5. Leave `PLAID_REDIRECT_URI` unset unless you need OAuth institution redirects.
+6. If `PLAID_REDIRECT_URI` is set, register that exact HTTPS URI in the Plaid dashboard.
 7. Start with one institution.
-8. Confirm import, manual sync, disconnect, and no duplicate transactions.
+8. Confirm import, opportunistic sync on app open, manual sync, disconnect, and no duplicate transactions.
 
 For local desktop testing against Plaid Production, do not send `http://localhost` as the production redirect URI. Use a registered HTTPS tunnel/app URL, or omit the redirect URI and test from a normal desktop browser where Plaid can use a popup or new tab for OAuth institutions.
 
@@ -174,17 +175,18 @@ Manual OpenAI suggestions are advisory and require user acceptance. Automatic Op
 4. Visit `/login`.
 5. Sign in.
 6. Confirm `/dashboard` loads.
-7. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render.
+7. Confirm the dashboard Net worth, Liquid, Debt, and Spendable scopes, liabilities-due panel, and category trend/month views render.
 8. Visit `/settings`.
 9. Confirm bank connection controls, optional Google Calendar connection, last successful sync/read, and session access are correct.
-10. Connect one institution.
-11. Confirm accounts and transactions import.
-12. Run manual sync.
-13. Confirm no duplicates.
-14. Edit one transaction.
-15. Resolve one review item if present.
-16. Export CSV and inspect columns.
-17. Disconnect the Plaid item if this was only a smoke test.
+10. Visit `/accounts` and confirm compact account cards show balances, relevant recent activity, and no duplicated Settings connection-health section.
+11. Connect one institution.
+12. Confirm accounts and transactions import.
+13. Run manual sync.
+14. Confirm no duplicates.
+15. Edit one transaction.
+16. Resolve one review item if present.
+17. Export CSV and inspect columns.
+18. Disconnect the Plaid item if this was only a smoke test. Historical Ledger rows should remain unless you run the separate cleanup CLI against the revoked item.
 
 ## Security Headers
 
@@ -234,7 +236,7 @@ For a secret issue:
 - The app is single-user from a product perspective, though rows are modeled by `user_id`.
 - Manual AI suggestions are advisory and require user acceptance. Automatic OpenAI cleanup can apply only when `ENABLE_OPENAI_AUTO_REVIEW=true` and server-side heuristics deem a suggestion eligible; proactive scans also use this flag before spending OpenAI tokens.
 - Bulk review acceptance is not implemented; review suggestions are accepted one item at a time.
-- The agent inbox is derived from review items and suggestions; it is not a persisted generic proposal store yet.
-- Reimbursement reporting exists, but automatic reimbursement matching and full reimbursement lifecycle management are not implemented yet.
+- The agent inbox is still a review-first proposal surface. Persistent `agent_proposals` exist for longer-lived assistant proposals and clarification requests, but broader persisted proposal browsing remains future UI work.
+- Reimbursement matching can rank likely reimbursement inflows and link them through audited helper paths after explicit approval; fully autonomous reimbursement lifecycle management is not implemented.
 - Token encryption key rotation needs a planned migration or reconnect flow.
 - Full audit reporting UI is not implemented yet.

@@ -241,6 +241,7 @@ async function autoFixMissingCategoryReviews(
 export default async function ReviewPage() {
   let dataError: string | undefined;
   let isConfigured = false;
+  let isDemo = false;
   let isSignedIn = false;
   let categories: CategoryRecord[] = [];
   let reviewItems: ReviewQueueItem[] = [];
@@ -249,27 +250,32 @@ export default async function ReviewPage() {
 
   const context = await getFinanceServerContext();
   isConfigured = context.isConfigured;
+  isDemo = context.isDemo;
   isSignedIn = context.isSignedIn;
   dataError = context.dataError;
 
   if (context.client && context.userId) {
     try {
-      await ensureMissingCategoryReviews(context.client, context.userId);
+      if (!context.isDemo) {
+        await ensureMissingCategoryReviews(context.client, context.userId);
+      }
 
       [categories, reviewItems] = await Promise.all([
         listCategories(context.client, context.userId),
         listReviewItems(context.client, context.userId, "open")
       ]);
 
-      const autoFixedCount = await autoFixMissingCategoryReviews(
-        context.client,
-        context.userId,
-        reviewItems,
-        categories
-      );
+      const autoFixedCount = context.isDemo
+        ? 0
+        : await autoFixMissingCategoryReviews(
+          context.client,
+          context.userId,
+          reviewItems,
+          categories
+        );
 
       let cleanupTouched = false;
-      if (aiStatus.activeKind === "openai" && aiStatus.autoReviewEnabled) {
+      if (!context.isDemo && aiStatus.activeKind === "openai" && aiStatus.autoReviewEnabled) {
         try {
           const cleanup = await runAiReviewCleanup({
             client: context.client,
@@ -301,6 +307,7 @@ export default async function ReviewPage() {
       categories={categories}
       dataError={dataError}
       isConfigured={isConfigured}
+      isDemo={isDemo}
       isSignedIn={isSignedIn}
       reviewItems={reviewItems}
       trustedSpending={trustedSpending}

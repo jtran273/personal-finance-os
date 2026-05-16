@@ -19,7 +19,7 @@ function addOrigin(origins: Set<string>, value: string | null | undefined) {
   }
 }
 
-function getRequestOrigin(request: NextRequest) {
+export function getRequestOrigin(request: NextRequest) {
   const forwardedHost = firstHeaderValue(request.headers.get("x-forwarded-host"));
   const host = forwardedHost ?? firstHeaderValue(request.headers.get("host"));
   const forwardedProto = firstHeaderValue(request.headers.get("x-forwarded-proto"));

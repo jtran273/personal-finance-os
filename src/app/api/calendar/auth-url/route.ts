@@ -1,4 +1,5 @@
 import { type NextRequest } from "next/server";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   buildGoogleCalendarAuthUrl,
   createGoogleCalendarOAuthState,
@@ -19,6 +20,10 @@ function isProductionRuntime() {
 export async function POST(request: NextRequest) {
   const originError = requireSameOriginRequest(request);
   if (originError) return originError;
+
+  if (await isDemoMode()) {
+    return jsonNoStore({ error: "Demo mode does not connect Google Calendar." }, { status: 403 });
+  }
 
   const context = await requireCalendarRouteUser();
   if ("response" in context) return context.response;

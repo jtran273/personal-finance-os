@@ -42,26 +42,26 @@ Plaid API
 | Route | Purpose | Data source |
 | --- | --- | --- |
 | `/login` | Supabase Auth sign-in and optional local demo entry | Supabase Auth server client |
-| `/dashboard` | Balance dashboard, sync freshness, selected-period transaction activity, liabilities due, category trend/month spending views | Accounts, snapshots, transactions |
+| `/dashboard` | Balance dashboard with Net worth, Liquid, Debt, and Spendable scopes, sync freshness, selected-period transaction activity, liabilities due, category trend/month spending views, and mobile summary | Accounts, snapshots, transactions |
 | `/transactions` | Searchable/filterable transaction table, summary cards, merchant cleanup, CSV export link | Accounts, categories, enriched transactions |
 | `/transactions/[transactionId]` | Transaction edit surface | One enriched transaction plus categories |
 | `/agent-inbox` | Sanitized proposal inbox derived from open review items and normalized review suggestions | Open review items and stored suggestions |
 | `/review` | Review queue and split workflow | Review items, categories, transactions |
 | `/recurring` | Recurring candidates and recurring rows | Transactions, recurring expenses |
-| `/accounts` | Accounts grouped by finance type | Accounts and balance snapshots |
-| `/settings` | Plaid bank connection controls and session access | Plaid connections |
+| `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; Plaid connection health stays in Settings | Accounts, balance snapshots, and recent transactions |
+| `/settings` | Plaid connection, sync, repair, disconnect, Calendar read connection, and session access | Plaid and Calendar connections |
 
 ### Route Handlers
 
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/plaid/connections` | `GET` | List active/error/revoked Plaid connections for the signed-in user |
-| `/api/plaid/link-token` | `POST` | Create a Plaid Link token for the signed-in user, including update mode for a selected item |
-| `/api/plaid/exchange` | `POST` | Exchange a Plaid public token, persist item metadata, then run initial sync |
-| `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections, or one selected connection |
+| `/api/plaid/link-token` | `POST` | Create a Plaid Link token for the signed-in user, including update mode for a selected item; demo mode rejects this write path |
+| `/api/plaid/exchange` | `POST` | Exchange a Plaid public token, persist item metadata, then run initial sync; demo mode rejects this write path |
+| `/api/plaid/sync` | `POST` | Manually sync all active Plaid connections, or one selected connection; demo mode returns a no-op seeded sync result |
 | `/api/plaid/sync/scheduled` | `GET`/`POST` | Run scheduled sync for all users with syncable Plaid items when authorized with `CRON_SECRET` |
-| `/api/plaid/connections/[connectionId]` | `DELETE` | Revoke a Plaid item and stop future sync |
-| `/api/calendar/auth-url` | `POST` | Start read-only Google Calendar OAuth for the signed-in user |
+| `/api/plaid/connections/[connectionId]` | `DELETE` | Remove a Plaid item, stop future sync, and retain a revoked tombstone row while preserving historical Ledger rows |
+| `/api/calendar/auth-url` | `POST` | Start read-only Google Calendar OAuth for the signed-in user; demo mode rejects this write path |
 | `/api/calendar/callback` | `GET` | Complete Google Calendar OAuth after state-cookie validation |
 | `/api/calendar/connections` | `GET` | List signed-in user's Calendar connection status without token fields |
 | `/api/calendar/connections/[connectionId]` | `DELETE` | Disconnect Calendar and stop future event reads |
@@ -119,7 +119,11 @@ The core sync service can run either all syncable items or a single item by data
 
 Initial, manual, and scheduled syncs persist run-level and item-level observability rows. These rows store counts, app-owned row ids, status, timestamps, and sanitized Plaid error codes/messages only. Access tokens, transaction cursors, raw provider payloads, request auth headers, and provider item ids stay out of browser responses and sync logs.
 
+When Plaid returns `PRODUCT_NOT_ENABLED`, `PRODUCT_NOT_READY`, or `INVALID_PRODUCT` for Transactions Sync, Ledger treats transactions as skipped for that item while still importing accounts, balances, and balance snapshots where available. The sync run records skipped transaction counts and safe warning metadata, and it does not advance the item's transaction cursor on a skipped transaction pass.
+
 The access token never leaves server code.
+
+Disconnect is intentionally non-destructive for Ledger-owned finance data. The service removes the item from Plaid, or marks it revoked locally when the old stored token can no longer decrypt, then keeps the `plaid_items` row as a disconnected tombstone with the stored cursor cleared and token ciphertext replaced by a revoked marker. Historical accounts, snapshots, raw/enriched transactions, reviews, splits, reimbursements, recurring rows, agent proposals, sync run items, and audit events remain available. The separate `npm run plaid:cleanup` CLI is the only destructive path and refuses to execute against non-revoked Plaid items.
 
 ## Calendar Flow
 
@@ -148,7 +152,7 @@ This split lets the app:
 - show raw Plaid context in the edit UI,
 - avoid treating unresolved activity as final budget truth.
 
-The `/transactions` surface supports explicit merchant cleanup for repeated label fixes. A user can match merchant/raw-name text, choose one saved category and intent, update matching enriched rows, and optionally persist a merchant rule so future Plaid imports receive the same app-facing category. The action records audit events and does not mutate raw Plaid rows. Transaction filters include search, month, date range, account, category, intent, review state, review reason, quality state, row limit, and transfer exclusion.
+The `/transactions` surface supports explicit merchant cleanup for repeated label fixes. A user can match merchant/raw-name text, choose one saved category and intent, update matching enriched rows, and optionally persist a merchant rule so future Plaid imports receive the same app-facing category. The action records audit events and does not mutate raw Plaid rows. Transaction filters include search, month, date range, account, category, direction, intent, review state, review reason, quality state, row limit, and transfer exclusion.
 
 ## Review Flow
 
@@ -180,7 +184,7 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 ## Dashboard Calculations
 
-`src/lib/finance/balances.ts` derives account totals, sync freshness, and balance trends from accounts, balance snapshots, and transaction history. The dashboard supports net worth, cash, liabilities, and cash-minus-liabilities views over 1-week, 1-month, 3-month, 6-month, 1-year, and all-time ranges. Selecting a point in the trend surfaces the related non-transfer transactions and links back to the transaction filters.
+`src/lib/finance/balances.ts` derives account totals, sync freshness, and balance trends from accounts, balance snapshots, and transaction history. The dashboard supports Net worth, Liquid, Debt, and Spendable views over 1-week, 1-month, 3-month, 6-month, 1-year, and all-time ranges; internally those map to `netWorth`, `cash`, `liabilities`, and `cashMinusLiabilities`. Desktop layouts render the interactive balance chart; mobile layouts use a simplified balance summary with the same range controls and transaction link so phone views avoid horizontal chart overflow. Selecting a point in the desktop trend surfaces the related non-transfer transactions and links back to the transaction filters.
 
 `src/lib/finance/liabilities.ts` builds the liabilities-due panel from active credit accounts, cash balances, credit limits, and likely payment transactions. It estimates due dates from the last payment when available and highlights overdue or due-soon balances without relying on provider-sensitive ids.
 

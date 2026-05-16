@@ -9,6 +9,7 @@ import {
   type FinanceSupabaseClient,
   type RecurringExpenseRecord
 } from "@/lib/db";
+import { isDemoMode } from "@/lib/demo/auth";
 import {
   applyConfirmRecurringPayload,
   applyDismissRecurringPayload,
@@ -54,6 +55,8 @@ function submittedRecurringExpenseId(formData: FormData) {
 }
 
 async function getRecurringContext() {
+  if (await isDemoMode()) throw new Error("Demo mode is read-only. Sign in to update recurring rows.");
+
   const supabase = await createSupabaseServerClient();
   if (!supabase) throw new Error("Supabase is not configured.");
 

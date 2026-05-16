@@ -11,6 +11,7 @@ import { createDemoFinanceClient, DEMO_USER_ID } from "@/lib/demo/finance-client
 import { buildTransactionsCsv } from "@/lib/export/transactions";
 import {
   getReviewReasonCopy,
+  isManualTransactionEditResolvableReview,
   isPeerToPeerReview,
   REVIEW_REASON_COPY,
   REVIEW_REASON_ORDER
@@ -108,6 +109,16 @@ describe("review reason definitions", () => {
       assert.notEqual(copy.action.trim(), "");
       assert.equal(isPeerToPeerReview(reason), reason === "venmo");
     }
+  });
+
+  it("keeps manual transaction edits scoped to review items they can safely finalize", () => {
+    assert.deepEqual(
+      expectedReviewReasons.filter(isManualTransactionEditResolvableReview),
+      ["large", "transfer-pair", "low-confidence", "missing-category", "unclear-transfer"]
+    );
+    assert.equal(isManualTransactionEditResolvableReview("venmo"), false);
+    assert.equal(isManualTransactionEditResolvableReview("new-recurring"), false);
+    assert.equal(isManualTransactionEditResolvableReview("recurring-candidate"), false);
   });
 
   it("keeps transaction filters and CSV export aligned with every review reason", () => {

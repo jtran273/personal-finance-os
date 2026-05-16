@@ -11,7 +11,7 @@
 .panel {
   width: min(100%, 420px);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
   padding: 28px;
   background: var(--surface);
   box-shadow: var(--shadow-md);
@@ -35,7 +35,7 @@
 .mark {
   width: 36px;
   height: 36px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   font-family: inherit;
   font-size: 24px;
 }
@@ -59,7 +59,7 @@
 
 .sub {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--text-meta);
 }
 
 .stack {
@@ -71,7 +71,7 @@
 .eyebrow {
   margin: 0 0 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-label);
   text-transform: uppercase;
 }
 
@@ -93,14 +93,14 @@
   flex-direction: column;
   gap: 7px;
   color: var(--ink-2);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
 .field input {
   width: 100%;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 12px;
   background: var(--surface);
   outline: none;
@@ -113,9 +113,9 @@
 
 .notice {
   margin: 0;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 12px;
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .error {
@@ -142,7 +142,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 14px;
   font-weight: 600;
   text-decoration: none;
@@ -179,14 +179,14 @@
 .demoTitle {
   margin: 0;
   color: var(--ink);
-  font-size: 13px;
+  font-size: var(--text-ui);
   font-weight: 700;
 }
 
 .demoCopy {
   margin: 3px 0 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--text-ui);
 }
 
 .demoButton {
@@ -196,7 +196,7 @@
   justify-content: center;
   gap: 8px;
   border: 1px solid var(--line);
-  border-radius: 7px;
+  border-radius: var(--radius-control);
   padding: 10px 14px;
   background: var(--surface);
   color: var(--ink);

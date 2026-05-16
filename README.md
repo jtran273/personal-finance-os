@@ -50,7 +50,7 @@ Production hardening currently includes:
 
 Users sign in with Supabase Auth at `/login`. Protected routes redirect unauthenticated users back to login.
 
-Demo mode can open a seeded workspace without Supabase or Plaid. It is separate from real Supabase/Plaid data, uses an HTTP-only demo cookie, defaults on for local development, and is available in production only when `ENABLE_DEMO_MODE=true`.
+Demo mode can open a seeded read-only workspace without Supabase or Plaid. It is separate from real Supabase/Plaid data, uses an HTTP-only demo cookie, defaults on for local development, and is available in production only when `ENABLE_DEMO_MODE=true`.
 
 ### Connect A Bank
 
@@ -75,6 +75,20 @@ Sync is designed to be idempotent so repeated syncs do not create duplicate tran
 Each initial, manual, or scheduled sync also writes a persisted run summary with item counts, changed-row counts, status, and sanitized error metadata. Browser responses and Settings show app-owned connection ids and safe status only, not Plaid access tokens, transaction cursors, raw payloads, or provider item ids.
 
 Settings derives safe sync status from stored Plaid item fields: item state, last successful sync time, and sanitized Plaid error code. The browser never receives access tokens, transaction cursors, raw provider payloads, or Plaid request ids. When a connection reports a repairable item error, Settings can open Plaid Link update mode for that item and then run a one-item sync.
+
+If Plaid account and balance data are available but Transactions Sync is not enabled or ready for an item, Ledger can still import accounts, balances, and balance snapshots. The sync summary records skipped transaction rows and safe error metadata without advancing the transaction cursor.
+
+Disconnecting a Plaid item stops future syncs and keeps historical Ledger rows visible. The revoked Plaid item row remains as a disconnected tombstone with a marker token and cleared cursor, while accounts, balances, transactions, reviews, recurring rows, and reimbursements are preserved. If old token encryption cannot be decrypted during disconnect, Ledger can still mark the item revoked locally so it no longer syncs.
+
+Destructive Plaid data cleanup is a separate service-role CLI for revoked items only. It dry-runs by default:
+
+```bash
+npm run plaid:cleanup -- --user-id <user-id> --institution-name "SchoolsFirst Federal Credit Union"
+```
+
+Actual deletion requires `--execute --confirm DELETE_PLAID_ITEM_DATA`.
+
+The app also performs a throttled opportunistic Plaid sync on app open through `/api/plaid/sync/opportunistic`. It skips items synced successfully in the last 24 hours and no-ops if another sync is already running.
 
 Scheduled sync is exposed through `/api/plaid/sync/scheduled` and requires `Authorization: Bearer <CRON_SECRET>`. The same secret protects `/api/agents/proactive-scan/scheduled`, which runs a bounded reimbursement-candidate detector loop, and `/api/openclaw/briefing/scheduled`, which compiles or updates the current OpenClaw briefing proposal.
 
@@ -118,13 +132,13 @@ The transaction edit view lets the user change app-facing fields:
 
 Raw Plaid fields stay preserved for context and auditability.
 
-Transactions can be filtered by search, month, date range, account, category, intent, review state, review reason, quality state, row limit, and transfer exclusion. CSV export uses the same filter model so exported rows match the visible ledger slice.
+Transactions can be filtered by search, month, date range, account, category, direction, intent, review state, review reason, quality state, row limit, and transfer exclusion. CSV export uses the same filter model so exported rows match the visible ledger slice.
 
 The transaction list also includes a merchant cleanup control for user-initiated repeated fixes, such as applying a food category to all McDonald's rows or moving Retail Wash rows into Auto / Car Maintenance. The cleanup updates matching enriched rows, writes audit events, and can save a merchant rule for future imports.
 
 ### Configure The Workspace
 
-Settings is intentionally minimal: it keeps Plaid bank connection controls, optional read-only Google Calendar context, and session access only. Dashboard, Transactions, Review, and Recurring own the day-to-day finance workflow so Settings does not become a second workspace.
+Settings is intentionally minimal: it keeps Plaid connection, sync, repair, and disconnect controls, optional read-only Google Calendar context, and session access only. Dashboard, Transactions, Review, and Recurring own the day-to-day finance workflow so Settings does not become a second workspace.
 
 ### Track Recurring Spending
 
@@ -142,13 +156,13 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | Route | What it does |
 | --- | --- |
 | `/login` | Supabase sign-in and seeded demo entry |
-| `/dashboard` | Balance dashboard with net worth/cash/liabilities/cash-minus-liabilities scopes, sync freshness, selected-period transactions, liabilities due, and category trend/month views |
+| `/dashboard` | Balance dashboard with Net worth, Liquid, Debt, and Spendable scopes, sync freshness, selected-period transactions, liabilities due, category trend/month views, and a simplified mobile balance summary |
 | `/transactions` | Filterable enriched transaction table with review reason filters, merchant cleanup, reimbursement badges, and CSV export |
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
 | `/agent-inbox` | Derived proposal queue for sanitized finance-agent recommendations from open review items |
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
 | `/recurring` | Recurring expense candidates, confirmed recurring rows, and the next-30-day cashflow calendar |
-| `/accounts` | Accounts grouped by cash, credit, investments, and retirement |
+| `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; connection health stays in Settings |
 | `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection, and session access |
 
 ## Stack
@@ -236,7 +250,10 @@ OPENCLAW_BRIEFING_CADENCE=weekly
 PROACTIVE_SCAN_USER_ID=
 PROACTIVE_SCAN_MAX_TX=100
 FIDELITY_HOLDINGS=AAPL:10,NVDA:2,cash:0
+MANUAL_INVESTMENT_HOLDINGS='[{"accountName":"Brokerage","cash":0,"holdings":[{"symbol":"AAPL","shares":10}]}]'
 ```
+
+For production Plaid Link, leave `PLAID_REDIRECT_URI` unset unless you are using OAuth institutions that require a redirect. If you set it, use the exact HTTPS URI registered in the Plaid dashboard; `NEXT_PUBLIC_APP_URL` is not used as a production Plaid redirect fallback.
 
 Generate a production Plaid token encryption key with:
 
@@ -246,11 +263,13 @@ openssl rand -base64 32
 
 Use [DEPLOYMENT.md](DEPLOYMENT.md) for the full environment table and production setup.
 
-`FIDELITY_HOLDINGS` is optional and server-only. Use it for manually tracked Fidelity holdings that Plaid does not sync, with `SYMBOL:shares` pairs plus optional `cash`. When set, dashboard and account totals use recent market quotes for that account and leave Plaid sync untouched.
+`FIDELITY_HOLDINGS` is optional and server-only. Use it for manually tracked Fidelity holdings that Plaid does not sync, with `SYMBOL:shares` pairs plus optional `cash`. `MANUAL_INVESTMENT_HOLDINGS` supports the same manual valuation path for other accounts as JSON, keyed by `accountName` or `institutionName` with optional `cash` and `holdings`. When either value is set, dashboard and account totals use recent market quotes for matching manual accounts and leave Plaid sync untouched.
 
 ## Demo Mode
 
 Demo mode is intended for local development, screenshots, smoke tests, CI, and deliberate product walkthroughs. It uses a seeded in-memory finance workspace, not real Supabase/Plaid data. Demo mode defaults on outside production and defaults off in production unless `ENABLE_DEMO_MODE=true`.
+
+Demo data is read-only. Buttons that would connect Plaid, connect Google Calendar, sync, disconnect, clean up merchants, edit transactions, resolve review items, or confirm recurring rows render as preview/read-only controls and do not call real provider or write paths.
 
 The seeded workspace includes review cases for missing category, unclear transfer, recurring candidate, low-confidence cleanup, and merchant-rule testing, including Retail Wash rows that exercise the merchant cleanup flow.
 

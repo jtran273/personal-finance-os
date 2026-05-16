@@ -20,6 +20,7 @@ import type {
   InstitutionRow,
   Json,
   MerchantRuleRow,
+  PlaidItemRow,
   RawTransactionRow,
   ReimbursementRecord,
   ReimbursementRecordRow,
@@ -46,7 +47,8 @@ import {
   type AgentProposalJsonObject
 } from "../agents/proposals";
 import { missingDefaultSystemCategories } from "../finance/default-categories";
-import { buildReimbursementLinkDecision } from "../finance/reimbursement-linking";
+import { buildReimbursementLinkDecision, isReportableIncomeIntent } from "../finance/reimbursement-linking";
+import { transactionSpendingAmount } from "../finance/spending";
 import { isRecurringReview } from "../review/reasons";
 import { getSupabaseConfig } from "../supabase/env";
 
@@ -132,10 +134,12 @@ export class FinanceDbError extends Error {
 }
 
 export type TransactionQualityFilter = "all" | "needs-cleanup" | "low-confidence" | "uncategorized";
+export type TransactionDirectionFilter = "all" | "income" | "spending";
 
 export interface TransactionListFilters {
   accountIds?: string[];
   categoryIds?: string[];
+  direction?: TransactionDirectionFilter;
   intent?: TransactionIntent | "all";
   fromDate?: string;
   toDate?: string;
@@ -330,6 +334,21 @@ function toAccountRecord(row: AccountRow, institution?: InstitutionRow): Account
   };
 }
 
+async function listVisibleAccountIds(client: FinanceSupabaseClient, userId: string) {
+  const [accountResult, plaidItemResult] = await Promise.all([
+    client.from("accounts").select("id,plaid_item_id").eq("user_id", userId).eq("is_active", true),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
+  ]);
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
+  );
+
+  return (expectData(accountResult, "List visible account ids") as Array<Pick<AccountRow, "id" | "plaid_item_id">>)
+    .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .map((account) => account.id);
+}
+
 function toCategoryRecord(row: CategoryRow): CategoryRecord {
   return {
     id: row.id,
@@ -503,10 +522,17 @@ function transactionMatchesQuality(transaction: TransactionRecord, quality: Tran
   return transactionNeedsCategoryCleanup(transaction);
 }
 
+function transactionMatchesDirection(transaction: TransactionRecord, direction: TransactionDirectionFilter | undefined) {
+  if (!direction || direction === "all") return true;
+  if (direction === "income") return transaction.amount > 0 && isReportableIncomeIntent(transaction.intent);
+  return transactionSpendingAmount(transaction) > 0;
+}
+
 function requiresHydratedTransactionFiltering(filters: TransactionListFilters) {
   return Boolean(
     filters.search?.trim() ||
-    (filters.quality && filters.quality !== "all")
+    (filters.quality && filters.quality !== "all") ||
+    (filters.direction && filters.direction !== "all")
   );
 }
 
@@ -517,7 +543,7 @@ function transactionRowLimit(filters: TransactionListFilters) {
 
 export function filterTransactionRecordsForList(
   transactions: readonly TransactionRecord[],
-  filters: Pick<TransactionListFilters, "excludeTransfers" | "limit" | "offset" | "quality" | "reviewReason" | "reviewStatus" | "search"> = {}
+  filters: Pick<TransactionListFilters, "direction" | "excludeTransfers" | "limit" | "offset" | "quality" | "reviewReason" | "reviewStatus" | "search"> = {}
 ) {
   const search = normalizeSearchText(filters.search ?? "");
   const searched = search
@@ -536,7 +562,8 @@ export function filterTransactionRecordsForList(
       transaction.reviewItems.some((review) => review.reason === filters.reviewReason)
     )
     : reviewFiltered;
-  const qualityFiltered = reasonFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
+  const directionFiltered = reasonFiltered.filter((transaction) => transactionMatchesDirection(transaction, filters.direction));
+  const qualityFiltered = directionFiltered.filter((transaction) => transactionMatchesQuality(transaction, filters.quality));
 
   return slicePage(qualityFiltered, filters.limit, filters.offset);
 }
@@ -629,6 +656,7 @@ async function hydrateTransactions(
   const [
     rawResult,
     accountResult,
+    plaidItemResult,
     institutionResult,
     categoryResult,
     reviewResult,
@@ -642,7 +670,8 @@ async function hydrateTransactions(
         .eq("user_id", userId)
         .in("id", rawIds)
       : Promise.resolve({ data: [] as RawTransactionContextRow[], error: null }),
-    client.from("accounts").select("*").eq("user_id", userId),
+    client.from("accounts").select("*").eq("user_id", userId).eq("is_active", true),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked"),
     client.from("institutions").select("*").eq("user_id", userId),
     client.from("categories").select("*").eq("user_id", userId),
     client.from("review_items").select("*").eq("user_id", userId).in("enriched_transaction_id", transactionIds),
@@ -651,7 +680,14 @@ async function hydrateTransactions(
   ]);
 
   const rawById = byId(expectData(rawResult, "Load raw transactions"));
-  const accountById = byId(expectData(accountResult, "Load accounts for transactions"));
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "Load active Plaid item ids for transactions") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
+  );
+  const accountById = byId(
+    expectData(accountResult, "Load accounts for transactions")
+      .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+  );
   const institutionById = byId(expectData(institutionResult, "Load institutions for transactions"));
   const categoryById = byId(expectData(categoryResult, "Load categories for transactions"));
   const reviewsByTransaction = groupBy(
@@ -669,8 +705,10 @@ async function hydrateTransactions(
     (split) => split.transactionId
   );
 
-  return enrichedRows.map((row) => {
+  return enrichedRows.flatMap((row) => {
     const account = accountById.get(row.account_id);
+    if (!account) return [];
+
     return buildTransactionRecord({
       row,
       raw: rawById.get(row.raw_transaction_id),
@@ -725,15 +763,22 @@ async function listReviewTransactionIds(
 }
 
 export async function listAccounts(client: FinanceSupabaseClient, userId: string): Promise<AccountRecord[]> {
-  const [accountResult, institutionResult] = await Promise.all([
-    client.from("accounts").select("*").eq("user_id", userId).order("type").order("name"),
-    client.from("institutions").select("*").eq("user_id", userId)
+  const [accountResult, institutionResult, plaidItemResult] = await Promise.all([
+    client.from("accounts").select("*").eq("user_id", userId).eq("is_active", true).order("type").order("name"),
+    client.from("institutions").select("*").eq("user_id", userId),
+    client.from("plaid_items").select("id").eq("user_id", userId).neq("status", "revoked")
   ]);
 
   const institutionById = byId(expectData(institutionResult, "List account institutions"));
-  return expectData(accountResult, "List accounts").map((account) =>
-    toAccountRecord(account, institutionById.get(account.institution_id))
+  const activePlaidItemIds = new Set(
+    (expectData(plaidItemResult, "List active Plaid item ids") as Array<Pick<PlaidItemRow, "id">>)
+      .map((item) => item.id)
   );
+  return expectData(accountResult, "List accounts")
+    .filter((account) => activePlaidItemIds.has(account.plaid_item_id))
+    .map((account) =>
+      toAccountRecord(account, institutionById.get(account.institution_id))
+    );
 }
 
 export async function listCategories(client: FinanceSupabaseClient, userId: string): Promise<CategoryRecord[]> {
@@ -896,6 +941,13 @@ export async function listTransactions(
 ): Promise<TransactionRecord[]> {
   const reviewTransactionIds = await listReviewTransactionIds(client, userId, filters);
   if (reviewTransactionIds && reviewTransactionIds.length === 0) return [];
+  const visibleAccountIds = await listVisibleAccountIds(client, userId);
+  if (visibleAccountIds.length === 0) return [];
+  const visibleAccountIdSet = new Set(visibleAccountIds);
+  const accountIds = filters.accountIds?.length
+    ? filters.accountIds.filter((accountId) => visibleAccountIdSet.has(accountId))
+    : visibleAccountIds;
+  if (accountIds.length === 0) return [];
 
   let query = client
     .from("enriched_transactions")
@@ -907,9 +959,7 @@ export async function listTransactions(
   if (reviewTransactionIds) {
     query = query.in("id", reviewTransactionIds);
   }
-  if (filters.accountIds?.length) {
-    query = query.in("account_id", filters.accountIds);
-  }
+  query = query.in("account_id", accountIds);
   if (filters.categoryIds?.length) {
     query = query.in("category_id", filters.categoryIds);
   }

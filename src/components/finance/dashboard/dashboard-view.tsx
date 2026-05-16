@@ -2,6 +2,7 @@
 
 import type {
   AccountRecord,
+  RecurringExpenseRecord,
   TransactionIntent,
   TransactionStatus
 } from "@/lib/db";
@@ -12,9 +13,12 @@ import type {
   SyncSummary
 } from "@/lib/finance/balances";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
 import { displayCategoryName } from "@/lib/finance/classification";
+import { CADENCE_LABEL, recurringMonthlyAmount } from "@/lib/finance/recurring-cadence";
 import { isReportableIncomeIntent } from "@/lib/finance/reimbursement-linking";
 import { isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
+import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
   Clock3,
   CreditCard,
@@ -54,8 +58,10 @@ interface DashboardViewProps {
   categoryBreakdowns: CategoryBreakdownSummary[];
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
   liabilitiesDue: LiabilitiesDueSummary;
+  recurringExpenses: RecurringExpenseRecord[];
   snapshotCount: number;
   syncSummary: SyncSummary;
   totals: AccountBalanceTotals;
@@ -418,6 +424,7 @@ function TrendChart({
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activityMode, setActivityMode] = useState<ActivityMode>("point");
+  const showActivityPanel = scope === "cash" || scope === "cashMinusLiabilities";
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(720);
 
@@ -522,13 +529,16 @@ function TrendChart({
       transaction.date <= end.date
     ))
   ).slice(0, 10) : periodTransactions;
-  const visibleTransactions = !hasSelectedPoint
+  const rawVisibleTransactions = !hasSelectedPoint
     ? periodTransactions
     : activityMode === "point"
       ? pointTransactions
       : activityMode === "before"
         ? beforeTransactions
         : afterTransactions;
+  const visibleTransactions = scope === "cash"
+    ? rawVisibleTransactions.filter((transaction) => dashboardTransactionIncomeAmount(transaction) > 0)
+    : rawVisibleTransactions;
   const candidateActivityFromDate = !hasSelectedPoint
     ? start.date
     : activityMode === "point"
@@ -585,13 +595,14 @@ function TrendChart({
   const selectedPointValueY = activeCoords
     ? Math.max(padding.top + 12, activeCoords[1] - 10)
     : 0;
+  const activityNoun = scope === "cash" ? "Income" : "Transactions";
   const activityTitle = !hasSelectedPoint
-    ? "Transactions in selected period"
+    ? `${activityNoun} in selected period`
     : activityMode === "point"
-      ? "Transactions for selected point"
+      ? `${activityNoun} for selected point`
       : activityMode === "before"
-        ? "Transactions before selected point"
-        : "Transactions after selected point";
+        ? `${activityNoun} before selected point`
+        : `${activityNoun} after selected point`;
 
   return (
     <div className={styles.trendPanel}>
@@ -778,55 +789,57 @@ function TrendChart({
       </div>
       <div className={styles.trendSource}>{sourceLabel}</div>
 
-      <section className={styles.activityPanel} aria-label="Selected balance transactions">
-        <div className={styles.activityHead}>
-          <div>
-            <span className={styles.eyebrow}>Transactions</span>
-            <h3>{activityTitle}</h3>
+      {showActivityPanel ? (
+        <section className={styles.activityPanel} aria-label="Selected balance transactions">
+          <div className={styles.activityHead}>
+            <div>
+              <span className={styles.eyebrow}>{activityNoun}</span>
+              <h3>{activityTitle}</h3>
+            </div>
+            <div className={styles.activityActions}>
+              {hasSelectedPoint ? (
+                <div className={styles.activityModeControls} aria-label="Transaction scope">
+                  <button
+                    aria-pressed={activityMode === "point"}
+                    className={activityMode === "point" ? styles.activityModeActive : undefined}
+                    onClick={() => setActivityMode("point")}
+                    type="button"
+                  >
+                    Point
+                  </button>
+                  <button
+                    aria-pressed={activityMode === "before"}
+                    className={activityMode === "before" ? styles.activityModeActive : undefined}
+                    onClick={() => setActivityMode("before")}
+                    type="button"
+                  >
+                    Before
+                  </button>
+                  <button
+                    aria-pressed={activityMode === "after"}
+                    className={activityMode === "after" ? styles.activityModeActive : undefined}
+                    onClick={() => setActivityMode("after")}
+                    type="button"
+                  >
+                    After
+                  </button>
+                </div>
+              ) : null}
+              {hasSelectedPoint ? (
+                <button
+                  className={styles.textButton}
+                  onClick={() => setActiveIndex(null)}
+                  type="button"
+                >
+                  Clear point
+                </button>
+              ) : null}
+              <Link className={styles.textLink} href={activityHref}>Open transactions</Link>
+            </div>
           </div>
-          <div className={styles.activityActions}>
-            {hasSelectedPoint ? (
-              <div className={styles.activityModeControls} aria-label="Transaction scope">
-                <button
-                  aria-pressed={activityMode === "point"}
-                  className={activityMode === "point" ? styles.activityModeActive : undefined}
-                  onClick={() => setActivityMode("point")}
-                  type="button"
-                >
-                  Point
-                </button>
-                <button
-                  aria-pressed={activityMode === "before"}
-                  className={activityMode === "before" ? styles.activityModeActive : undefined}
-                  onClick={() => setActivityMode("before")}
-                  type="button"
-                >
-                  Before
-                </button>
-                <button
-                  aria-pressed={activityMode === "after"}
-                  className={activityMode === "after" ? styles.activityModeActive : undefined}
-                  onClick={() => setActivityMode("after")}
-                  type="button"
-                >
-                  After
-                </button>
-              </div>
-            ) : null}
-            {hasSelectedPoint ? (
-              <button
-                className={styles.textButton}
-                onClick={() => setActiveIndex(null)}
-                type="button"
-              >
-                Clear point
-              </button>
-            ) : null}
-            <Link className={styles.textLink} href={activityHref}>Open transactions</Link>
-          </div>
-        </div>
-        <TransactionRows transactions={visibleTransactions} />
-      </section>
+          <TransactionRows transactions={visibleTransactions} />
+        </section>
+      ) : null}
     </div>
   );
 }
@@ -1159,7 +1172,7 @@ function IncomeByCategoryPanel({
         </div>
         <Link
           className={styles.textLink}
-          href={transactionsHref({ from: breakdown.fromDate, to: breakdown.toDate })}
+          href={transactionsHref({ direction: "income", from: breakdown.fromDate, to: breakdown.toDate })}
         >
           Open transactions
         </Link>
@@ -1195,6 +1208,7 @@ function IncomeByCategoryPanel({
                 className={styles.categoryRow}
                 href={transactionsHref({
                   category: row.id ?? undefined,
+                  direction: "income",
                   from: breakdown.fromDate,
                   q: row.id ? undefined : row.label,
                   to: breakdown.toDate
@@ -1281,8 +1295,8 @@ function CategorySpendingPanel({
     ? `${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
     : `${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"}`;
   const openTransactionsHref = viewMode === "trend"
-    ? transactionsHref({ exclude_transfers: true, from: fromDate, to: toDate })
-    : transactionsHref({ exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
+    ? transactionsHref({ direction: "spending", exclude_transfers: true, from: fromDate, to: toDate })
+    : transactionsHref({ direction: "spending", exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
 
   return (
     <section aria-label="Spending by category" className={styles.categoryPanel}>
@@ -1391,6 +1405,7 @@ function CategorySpendingPanel({
                 className={styles.categoryRow}
                 href={transactionsHref({
                   category: row.id ?? undefined,
+                  direction: "spending",
                   exclude_transfers: true,
                   from: fromDate,
                   q: row.id ? undefined : row.label,
@@ -1451,6 +1466,7 @@ function CategorySpendingPanel({
                     className={styles.categoryRow}
                     href={transactionsHref({
                       category: row.id ?? undefined,
+                      direction: "spending",
                       exclude_transfers: true,
                       from: breakdown.fromDate,
                       q: row.id ? undefined : row.label,
@@ -1564,6 +1580,421 @@ function LiabilitiesDuePanel({ summary }: { summary: LiabilitiesDueSummary }) {
   );
 }
 
+function NetWorthCompositionPanel({
+  accounts,
+  totals
+}: {
+  accounts: readonly AccountRecord[];
+  totals: AccountBalanceTotals;
+}) {
+  if (accounts.length === 0) return null;
+
+  const liquidAccounts = accounts
+    .filter((account) => account.type === "depository")
+    .map((account) => ({ account, value: account.balance }))
+    .sort((a, b) => b.value - a.value);
+  const investmentAccounts = accounts
+    .filter((account) => account.type === "investment" || account.type === "retirement")
+    .map((account) => ({ account, value: account.balance }))
+    .sort((a, b) => b.value - a.value);
+  const debtAccounts = accounts
+    .filter((account) => account.type === "credit")
+    .map((account) => ({ account, value: Math.abs(account.balance) }))
+    .filter((row) => row.value > 0)
+    .sort((a, b) => b.value - a.value);
+
+  const liquidTotal = liquidAccounts.reduce((sum, row) => sum + row.value, 0);
+  const investmentTotal = investmentAccounts.reduce((sum, row) => sum + row.value, 0);
+  const debtTotal = debtAccounts.reduce((sum, row) => sum + row.value, 0);
+  const grossAssets = Math.max(liquidTotal, 0) + Math.max(investmentTotal, 0);
+
+  const groups = [
+    {
+      accounts: liquidAccounts,
+      color: "#2f6f4e",
+      key: "liquid",
+      label: "Liquid assets",
+      total: liquidTotal
+    },
+    {
+      accounts: investmentAccounts,
+      color: "#2f5f8f",
+      key: "investments",
+      label: "Investments",
+      total: investmentTotal
+    }
+  ].filter((group) => group.accounts.length > 0);
+
+  return (
+    <section aria-label="Net worth composition" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Composition</span>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(totals.netWorth)}</h3>
+          <p className={styles.liabilityCoverage}>
+            {formatMoney(grossAssets)} assets minus {formatMoney(debtTotal)} debt.
+          </p>
+        </div>
+      </div>
+
+      {grossAssets + debtTotal > 0 ? (() => {
+        const barTotal = grossAssets + debtTotal;
+        return (
+          <div className={styles.compositionBar} role="img" aria-label="Net worth composition bar">
+            {groups.map((group) => (
+              <span
+                key={group.key}
+                className={styles.compositionSegment}
+                style={{ background: group.color, width: `${(Math.max(0, group.total) / barTotal) * 100}%` }}
+                title={`${group.label}: ${formatMoney(group.total)}`}
+              />
+            ))}
+            {debtTotal > 0 ? (
+              <span
+                className={styles.compositionSegment}
+                style={{ background: "#b55353", width: `${(debtTotal / barTotal) * 100}%` }}
+                title={`Debt: ${formatMoney(debtTotal)}`}
+              />
+            ) : null}
+          </div>
+        );
+      })() : null}
+
+      <div className={styles.compositionGroups}>
+        {groups.map((group) => (
+          <div className={styles.compositionGroup} key={group.key}>
+            <div className={styles.compositionGroupHead}>
+              <strong>
+                <span className={styles.compositionSwatch} style={{ background: group.color }} aria-hidden />
+                {group.label}
+              </strong>
+              <span className={styles.compositionGroupValue}>{formatMoney(group.total)}</span>
+            </div>
+            <ul className={styles.compositionAccountList}>
+              {group.accounts.map(({ account, value }) => (
+                <li key={account.id} className={styles.compositionAccountRow}>
+                  <span>{friendlyAccountLabel(account)}</span>
+                  <strong className={value < 0 ? styles.liabilityOverdue : undefined}>
+                    {formatMoney(value)}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        {debtAccounts.length > 0 ? (
+          <div className={styles.compositionGroup}>
+            <div className={styles.compositionGroupHead}>
+              <strong>
+                <span className={styles.compositionSwatch} style={{ background: "#b55353" }} aria-hidden />
+                Debt
+              </strong>
+              <span className={`${styles.compositionGroupValue} ${styles.liabilityOverdue}`}>
+                −{formatMoney(debtTotal)}
+              </span>
+            </div>
+            <ul className={styles.compositionAccountList}>
+              {debtAccounts.map(({ account, value }) => (
+                <li key={account.id} className={styles.compositionAccountRow}>
+                  <span>{friendlyAccountLabel(account)}</span>
+                  <strong className={styles.liabilityOverdue}>−{formatMoney(value)}</strong>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function RecurringBillsPanel({
+  recurringExpenses
+}: {
+  recurringExpenses: readonly RecurringExpenseRecord[];
+}) {
+  const active = recurringExpenses
+    .filter((expense) => expense.status === "active")
+    .map((expense) => ({ expense, monthly: recurringMonthlyAmount(expense) }))
+    .sort((a, b) => b.monthly - a.monthly);
+
+  if (active.length === 0) return null;
+
+  const monthlyTotal = active.reduce((sum, row) => sum + row.monthly, 0);
+  const maxMonthly = Math.max(...active.map((row) => row.monthly), 1);
+
+  return (
+    <section aria-label="Recurring bills" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Recurring bills</span>
+          <h3 className={styles.liabilityHeadline}>~{formatMoney(monthlyTotal)} / mo</h3>
+          <p className={styles.liabilityCoverage}>
+            {active.length} validated {active.length === 1 ? "subscription" : "subscriptions"} from the recurring tab, normalized to monthly.
+          </p>
+        </div>
+      </div>
+      <div className={styles.liabilityRows}>
+        {active.map(({ expense, monthly }) => {
+          const barWidth = (monthly / maxMonthly) * 100;
+          const nextDue = expense.nextDueDate ? formatDate(expense.nextDueDate) : null;
+          const category = expense.category ?? "Uncategorized";
+          return (
+            <div className={styles.liabilityRow} key={expense.id}>
+              <div className={styles.liabilityRowMain}>
+                <div>
+                  <strong>{expense.merchant}</strong>
+                  <span>
+                    {CADENCE_LABEL[expense.cadence]} · {category}
+                    {nextDue ? ` · next ${nextDue}` : ""}
+                  </span>
+                </div>
+                <div className={styles.liabilityRowAmount}>
+                  <strong>{formatMoney(Math.abs(expense.amount))}</strong>
+                  <span className={styles.liabilityCurrent}>per charge</span>
+                </div>
+              </div>
+              <div className={styles.utilizationTrack} aria-hidden>
+                <span style={{ width: `${barWidth}%` }} className={styles.liabilityDueSoon} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DebtSummaryPanel({ accounts }: { accounts: readonly AccountRecord[] }) {
+  const cards = accounts
+    .filter((account) => account.type === "credit")
+    .map((account) => {
+      const balance = Math.abs(account.balance);
+      const limit = account.creditLimit ?? null;
+      const utilization = limit && limit > 0 ? Math.min(100, (balance / limit) * 100) : null;
+      return { account, balance, limit, utilization };
+    })
+    .filter((card) => card.balance > 0 || card.limit !== null)
+    .sort((a, b) => b.balance - a.balance);
+
+  if (cards.length === 0) return null;
+
+  const totalOwed = cards.reduce((sum, card) => sum + card.balance, 0);
+  const totalLimit = cards.reduce((sum, card) => sum + (card.limit ?? 0), 0);
+  const overall = totalLimit > 0 ? (totalOwed / totalLimit) * 100 : null;
+
+  return (
+    <section aria-label="Debt summary" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Debt</span>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(totalOwed)}</h3>
+          <p className={styles.liabilityCoverage}>
+            {totalLimit > 0
+              ? `${formatMoney(totalLimit)} total limit${overall !== null ? ` · ${overall.toFixed(0)}% utilized` : ""}`
+              : `Across ${cards.length} ${cards.length === 1 ? "card" : "cards"}`}
+          </p>
+        </div>
+      </div>
+
+      {totalOwed > 0 ? (
+        <div className={styles.compositionBar} role="img" aria-label="Debt by card">
+          {cards.map((card) => (
+            <span
+              key={card.account.id}
+              className={styles.compositionSegment}
+              style={{ background: "#b55353", width: `${(card.balance / totalOwed) * 100}%`, opacity: 0.85 }}
+              title={`${friendlyAccountLabel(card.account)}: ${formatMoney(card.balance)}`}
+            />
+          ))}
+        </div>
+      ) : null}
+
+      <div className={styles.liabilityRows}>
+        {cards.map(({ account, balance, limit, utilization }) => {
+          const tone = utilization === null
+            ? styles.liabilityCurrent
+            : utilization >= 80
+              ? styles.liabilityOverdue
+              : utilization >= 30
+                ? styles.liabilityDueSoon
+                : styles.liabilityPaid;
+          return (
+            <div className={styles.liabilityRow} key={account.id}>
+              <div className={styles.liabilityRowMain}>
+                <div>
+                  <strong>{friendlyAccountLabel(account)}</strong>
+                  <span>
+                    {limit
+                      ? `${formatMoney(balance)} of ${formatMoney(limit)} limit`
+                      : "No limit reported"}
+                  </span>
+                </div>
+                <div className={styles.liabilityRowAmount}>
+                  <strong>{formatMoney(balance)}</strong>
+                  <span className={tone}>
+                    {utilization !== null ? `${utilization.toFixed(0)}% used` : "—"}
+                  </span>
+                </div>
+              </div>
+              {utilization !== null ? (
+                <div className={styles.utilizationTrack} aria-hidden>
+                  <span style={{ width: `${utilization}%` }} className={tone} />
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function SpendableComparisonPanel({
+  accounts,
+  liabilitiesDue,
+  totals
+}: {
+  accounts: readonly AccountRecord[];
+  liabilitiesDue: LiabilitiesDueSummary;
+  totals: AccountBalanceTotals;
+}) {
+  const liquidTotal = accounts
+    .filter((account) => account.type === "depository")
+    .reduce((sum, account) => sum + account.balance, 0);
+  const debtTotal = totals.liabilities;
+  const spendable = liquidTotal - debtTotal;
+  const denominator = Math.max(liquidTotal, debtTotal, 1);
+  const coverageOk = liquidTotal >= debtTotal;
+  const ratio = debtTotal > 0 ? liquidTotal / debtTotal : null;
+
+  return (
+    <section aria-label="Spendable comparison" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Spendable math</span>
+          <h3 className={`${styles.liabilityHeadline} ${coverageOk ? styles.liabilityPaid : styles.liabilityOverdue}`}>
+            {formatMoney(spendable)}
+          </h3>
+          <p className={styles.liabilityCoverage}>
+            {coverageOk
+              ? `Liquid assets cover debt with ${formatMoney(spendable)} to spare.`
+              : `Debt exceeds liquid assets by ${formatMoney(Math.abs(spendable))}.`}
+            {ratio !== null ? ` Liquid is ${ratio.toFixed(1)}× debt.` : ""}
+          </p>
+        </div>
+      </div>
+
+      <div className={styles.compositionStack} aria-label="Liquid versus debt">
+        <div className={styles.compositionRow}>
+          <span className={styles.compositionRowLabel}>Liquid assets</span>
+          <div className={styles.compositionBar} role="img" aria-label="Liquid assets bar">
+            <span
+              className={styles.compositionSegment}
+              style={{ background: "#2f6f4e", width: `${(liquidTotal / denominator) * 100}%` }}
+            />
+          </div>
+          <span className={styles.compositionRowValue}>{formatMoney(liquidTotal)}</span>
+        </div>
+        <div className={styles.compositionRow}>
+          <span className={styles.compositionRowLabel}>Debt</span>
+          <div className={styles.compositionBar} role="img" aria-label="Debt bar">
+            <span
+              className={styles.compositionSegment}
+              style={{ background: "#b55353", width: `${(debtTotal / denominator) * 100}%` }}
+            />
+          </div>
+          <span className={`${styles.compositionRowValue} ${styles.liabilityOverdue}`}>
+            −{formatMoney(debtTotal)}
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.liabilityRows}>
+        <div className={styles.liabilityRow}>
+          <div className={styles.liabilityRowMain}>
+            <div>
+              <strong>Liquid assets − Debt</strong>
+              <span>What&apos;s truly available after paying off cards.</span>
+            </div>
+            <div className={styles.liabilityRowAmount}>
+              <strong className={coverageOk ? styles.liabilityPaid : styles.liabilityOverdue}>
+                {formatMoney(spendable)}
+              </strong>
+            </div>
+          </div>
+        </div>
+        {liabilitiesDue.totalOwed > 0 ? (
+          <div className={styles.liabilityRow}>
+            <div className={styles.liabilityRowMain}>
+              <div>
+                <strong>Coverage</strong>
+                <span>{liabilitiesDue.hasOverdue ? "Includes overdue balances." : liabilitiesDue.hasDueSoon ? "Includes balances due soon." : "No urgent balances."}</span>
+              </div>
+              <div className={styles.liabilityRowAmount}>
+                <strong className={liabilitiesDue.coverageDelta >= 0 ? styles.liabilityPaid : styles.liabilityOverdue}>
+                  {liabilitiesDue.coverageDelta >= 0
+                    ? `+${formatMoney(liabilitiesDue.coverageDelta)}`
+                    : `−${formatMoney(Math.abs(liabilitiesDue.coverageDelta))}`}
+                </strong>
+                <span className={styles.liabilityCurrent}>after paying due cards</span>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function CashAccountsPanel({ accounts }: { accounts: readonly AccountRecord[] }) {
+  const cashAccounts = accounts
+    .filter((account) => account.type === "depository")
+    .map((account) => ({ account, value: account.balance }))
+    .sort((a, b) => b.value - a.value);
+
+  if (cashAccounts.length === 0) return null;
+
+  const total = cashAccounts.reduce((sum, row) => sum + row.value, 0);
+
+  const maxValue = Math.max(...cashAccounts.map((row) => row.value), 1);
+
+  return (
+    <section aria-label="Liquid accounts" className={styles.liabilityPanel}>
+      <div className={styles.liabilityPanelHead}>
+        <div>
+          <span className={styles.eyebrow}>Liquid accounts</span>
+          <h3 className={styles.liabilityHeadline}>{formatMoney(total)} across {cashAccounts.length}</h3>
+          <p className={styles.liabilityCoverage}>Checking and savings — money available right now.</p>
+        </div>
+      </div>
+      <div className={styles.liabilityRows}>
+        {cashAccounts.map(({ account, value }) => {
+          const share = total > 0 ? (value / total) * 100 : 0;
+          const barWidth = (value / maxValue) * 100;
+          return (
+            <div className={styles.liabilityRow} key={account.id}>
+              <div className={styles.liabilityRowMain}>
+                <div>
+                  <strong>{friendlyAccountLabel(account)}</strong>
+                  <span>{accountGroupLabel(account)}</span>
+                </div>
+                <div className={styles.liabilityRowAmount}>
+                  <strong className={value < 0 ? styles.liabilityOverdue : undefined}>{formatMoney(value)}</strong>
+                  <span className={styles.liabilityCurrent}>{share.toFixed(1)}% of liquid</span>
+                </div>
+              </div>
+              <div className={styles.utilizationTrack} aria-hidden>
+                <span style={{ width: `${barWidth}%` }} className={styles.liabilityPaid} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardView({
   accounts,
   asOfDate,
@@ -1572,8 +2003,10 @@ export function DashboardView({
   categoryBreakdowns,
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn,
   liabilitiesDue,
+  recurringExpenses,
   snapshotCount,
   syncSummary,
   totals
@@ -1584,6 +2017,7 @@ export function DashboardView({
   const [categoryRangeKey, setCategoryRangeKey] = useState<TrendRangeKey>("1M");
   const [syncState, setSyncState] = useState<"idle" | "syncing">("idle");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
+  const cashScopeValue = totals.cash;
   const cashMinusLiabilities = totals.cash - totals.liabilities;
   const balanceViews: BalanceViewOption[] = useMemo(() => [
     {
@@ -1595,37 +2029,42 @@ export function DashboardView({
       value: totals.netWorth
     },
     {
-      description: "Checking, savings, and other cash accounts.",
+      description: "Checking and savings balances available right now.",
       icon: Database,
       key: "cash",
-      label: "Cash",
+      label: "Liquid assets",
       positiveIsGood: true,
-      value: totals.cash
+      value: cashScopeValue
     },
     {
       description: "Credit card balances owed.",
       icon: CreditCard,
       key: "liabilities",
-      label: "Liabilities",
+      label: "Debt",
       positiveIsGood: false,
       tone: "negative",
       value: totals.liabilities
     },
     {
-      description: "Cash accounts after subtracting liabilities.",
+      description: "Liquid assets minus debt — what's truly yours to spend.",
       icon: WalletCards,
       key: "cashMinusLiabilities",
-      label: "Cash - liabilities",
+      label: "Spendable",
       positiveIsGood: true,
       tone: cashMinusLiabilities < 0 ? "negative" : "positive",
       value: cashMinusLiabilities
     }
-  ], [cashMinusLiabilities, totals.cash, totals.liabilities, totals.netWorth]);
+  ], [cashMinusLiabilities, cashScopeValue, totals.liabilities, totals.netWorth]);
   const selectedBalanceView = balanceViews.find((option) => option.key === balanceViewKey) ?? balanceViews[0];
   const selectedBalanceTone = selectedBalanceView.tone ?? (selectedBalanceView.value < 0 ? "negative" : undefined);
   const lastSyncedLabel = formatRelativeTime(syncSummary.latestSyncedAt);
 
   async function syncPlaidData() {
+    if (isDemo) {
+      setSyncMessage("Demo data is static.");
+      return;
+    }
+
     setSyncState("syncing");
     setSyncMessage(null);
 
@@ -1652,21 +2091,21 @@ export function DashboardView({
   return (
     <div className={styles.shell}>
       {!isConfigured ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Supabase is not configured for this environment, so persisted dashboard data cannot be loaded.
-        </div>
+        </Notice>
       ) : null}
 
       {isConfigured && !isSignedIn ? (
-        <div className={styles.notice} role="status">
+        <Notice role="status">
           Sign in with Supabase Auth to load your persisted dashboard data.
-        </div>
+        </Notice>
       ) : null}
 
       {dataError ? (
-        <div className={styles.errorNotice} role="alert">
+        <Notice role="alert" tone="error">
           {dataError}
-        </div>
+        </Notice>
       ) : null}
 
       {accounts.length === 0 ? (
@@ -1675,7 +2114,7 @@ export function DashboardView({
           <div>
             <strong>No persisted accounts yet</strong>
             <span>Connect Plaid to populate account balances and net worth.</span>
-            <Link className={styles.textLink} href="/accounts">Go to accounts</Link>
+            <LinkButton href="/accounts">Go to accounts</LinkButton>
           </div>
         </div>
       ) : (
@@ -1697,14 +2136,16 @@ export function DashboardView({
               <button
                 aria-busy={syncState === "syncing"}
                 className={styles.syncActionLink}
-                disabled={syncState === "syncing"}
+                disabled={isDemo || syncState === "syncing"}
                 onClick={() => void syncPlaidData()}
                 type="button"
               >
                 <RefreshCw className={syncState === "syncing" ? styles.spin : undefined} size={13} aria-hidden />
-                {syncState === "syncing" ? "Syncing" : "Sync"}
+                {isDemo ? "Demo" : syncState === "syncing" ? "Syncing" : "Sync"}
               </button>
-              {syncMessage ? <span className={styles.syncActionStatus} role="status">{syncMessage}</span> : null}
+              <span className={styles.syncActionStatus} role="status">
+                {syncMessage ?? (isDemo ? "Read-only sample data" : "")}
+              </span>
             </section>
           </div>
 
@@ -1752,22 +2193,50 @@ export function DashboardView({
         </section>
       )}
 
-      {accounts.length > 0 ? <LiabilitiesDuePanel summary={liabilitiesDue} /> : null}
-      {accounts.length > 0 ? (
-        <CategorySpendingPanel
-          asOfDate={asOfDate}
-          breakdowns={categoryBreakdowns}
-          rangeKey={categoryRangeKey}
-          setRangeKey={setCategoryRangeKey}
-          transactions={balanceTransactions}
-        />
-      ) : null}
-      {accounts.length > 0 ? (
-        <IncomeByCategoryPanel
-          asOfDate={asOfDate}
-          transactions={balanceTransactions}
-        />
-      ) : null}
+      {accounts.length > 0 ? (() => {
+        const scope = selectedBalanceView.key;
+        const accountTypeById = new Map(accounts.map((account) => [account.id, account.type] as const));
+        const scopedTransactions = balanceTransactions.filter((transaction) =>
+          transactionIncludedInScope(transaction, accountTypeById, scope)
+        );
+
+        if (scope === "netWorth") {
+          return <NetWorthCompositionPanel accounts={accounts} totals={totals} />;
+        }
+
+        if (scope === "cash") {
+          return (
+            <>
+              <CashAccountsPanel accounts={accounts} />
+              <IncomeByCategoryPanel asOfDate={asOfDate} transactions={scopedTransactions} />
+            </>
+          );
+        }
+
+        if (scope === "liabilities") {
+          return (
+            <>
+              <DebtSummaryPanel accounts={accounts} />
+              <CategorySpendingPanel
+                asOfDate={asOfDate}
+                breakdowns={categoryBreakdowns}
+                rangeKey={categoryRangeKey}
+                setRangeKey={setCategoryRangeKey}
+                transactions={scopedTransactions}
+              />
+              <RecurringBillsPanel recurringExpenses={recurringExpenses} />
+            </>
+          );
+        }
+
+        return (
+          <SpendableComparisonPanel
+            accounts={accounts}
+            liabilitiesDue={liabilitiesDue}
+            totals={totals}
+          />
+        );
+      })() : null}
     </div>
   );
 }

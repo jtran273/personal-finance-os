@@ -40,7 +40,8 @@ import { getPlaidLinkTokenConfig } from "./config";
 import { getPlaidClient } from "./client";
 import { getSafePlaidError } from "./errors";
 import { getPlaidConnectionIssue, type PlaidConnectionIssue } from "./status";
-import { decryptPlaidAccessToken, encryptPlaidAccessToken } from "./token-vault";
+import { decryptPlaidAccessToken, encryptPlaidAccessToken, PlaidTokenDecryptionError } from "./token-vault";
+import { recordManualInvestmentSnapshots } from "@/lib/investments/manual-valuations";
 
 type InstitutionInsert = Database["public"]["Tables"]["institutions"]["Insert"];
 type InstitutionUpdate = Database["public"]["Tables"]["institutions"]["Update"];
@@ -183,6 +184,9 @@ const RAW_TRANSACTION_COLUMNS = [
 
 const SYNC_PAGE_SIZE = 500;
 const UPSERT_CHUNK_SIZE = 100;
+const OPPORTUNISTIC_SYNC_THROTTLE_MS = 24 * 60 * 60 * 1000;
+const OPPORTUNISTIC_SYNC_RUNNING_STALE_MS = 30 * 60 * 1000;
+const TERMINAL_ITEM_REMOVE_ERROR_CODES = new Set(["INVALID_ACCESS_TOKEN", "ITEM_NOT_FOUND"]);
 const RETIREMENT_SUBTYPES = new Set([
   "401a",
   "401k",
@@ -273,6 +277,22 @@ export interface PlaidSyncItemSummary {
   rawTransactionsSkipped: number;
   rawTransactionsUpserted: number;
   transactionsRemoved: number;
+  warningCode?: string;
+  warningMessage?: string;
+}
+
+export interface PlaidItemLedgerDataPurgeSummary {
+  accountsDeleted: number;
+  agentProposalsDeleted: number;
+  auditEventsDeleted: number;
+  balanceSnapshotsDeleted: number;
+  enrichedTransactionsDeleted: number;
+  plaidSyncRunItemsDeleted: number;
+  rawTransactionsDeleted: number;
+  recurringExpensesDeleted: number;
+  reimbursementRecordsDeleted: number;
+  reviewItemsDeleted: number;
+  transactionSplitsDeleted: number;
 }
 
 export interface PlaidSyncRunSummary {
@@ -312,6 +332,12 @@ export interface PlaidScheduledSyncSummary {
   totalUsers: number;
 }
 
+export interface PlaidOpportunisticSyncSummary {
+  checkedAt: string;
+  reason: "in_progress" | "no_items" | "recently_synced" | "synced";
+  sync: PlaidSyncRunSummary | null;
+}
+
 export interface PlaidLinkTokenResult {
   expiration: string;
   linkToken: string;
@@ -321,6 +347,7 @@ export interface PlaidLinkTokenResult {
 function toConnectionSummary(item: PlaidItemPublicRow, institution?: InstitutionRow): PlaidConnectionSummary {
   const issue = getPlaidConnectionIssue({
     errorCode: item.error_code,
+    institutionName: institution?.name ?? null,
     lastSuccessfulSyncAt: item.last_successful_sync_at,
     status: item.status
   });
@@ -342,6 +369,31 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
   };
 }
 
+export function isPlaidItemDueForOpportunisticSync(
+  item: Pick<PlaidItemRow, "last_successful_sync_at" | "status">,
+  now = new Date()
+) {
+  if (item.status === "revoked") return false;
+  if (!item.last_successful_sync_at) return true;
+
+  const lastSuccessfulSyncAt = Date.parse(item.last_successful_sync_at);
+  if (Number.isNaN(lastSuccessfulSyncAt)) return true;
+
+  return now.getTime() - lastSuccessfulSyncAt >= OPPORTUNISTIC_SYNC_THROTTLE_MS;
+}
+
+export function isRecentRunningPlaidSync(
+  run: Pick<PlaidSyncRunRow, "started_at" | "status"> | null | undefined,
+  now = new Date()
+) {
+  if (!run || run.status !== "running") return false;
+
+  const startedAt = Date.parse(run.started_at);
+  if (Number.isNaN(startedAt)) return true;
+
+  return now.getTime() - startedAt < OPPORTUNISTIC_SYNC_RUNNING_STALE_MS;
+}
+
 function byId(rows: InstitutionRow[]) {
   return new Map(rows.map((row) => [row.id, row]));
 }
@@ -351,7 +403,7 @@ function coalesceInstitutionName(...names: Array<string | null | undefined>) {
 }
 
 function expectData<T>(
-  result: { data: T | null; error: { message: string } | null },
+  result: { data: T | null; error: { code?: string; message: string } | null },
   context: string
 ): T {
   if (result.error || result.data === null) {
@@ -359,6 +411,26 @@ function expectData<T>(
   }
 
   return result.data;
+}
+
+function isMissingSchemaTableError(error: { code?: string; message: string } | null | undefined) {
+  if (!error) return false;
+
+  return error.code === "42P01" || error.code === "PGRST205" || (
+    error.message.includes("Could not find the table") && error.message.includes("schema cache")
+  );
+}
+
+function expectOptionalData<T>(
+  result: { data: T | null; error: { code?: string; message: string } | null },
+  context: string
+): T | null {
+  if (isMissingSchemaTableError(result.error)) {
+    console.warn("plaid_purge_optional_table_missing", { context });
+    return null;
+  }
+
+  return expectData(result, context);
 }
 
 function chunk<T>(values: T[], size: number) {
@@ -979,7 +1051,8 @@ function emptyTransactionSyncUpdates(initialCursor: string | null) {
     added: [] as Transaction[],
     modified: [] as Transaction[],
     nextCursor: initialCursor,
-    removed: [] as RemovedTransaction[]
+    removed: [] as RemovedTransaction[],
+    warning: null as { error_code: string; error_message: string } | null
   };
 }
 
@@ -1002,14 +1075,24 @@ async function fetchTransactionSyncUpdatesWithRetry(accessToken: string, initial
 
 async function fetchTransactionSyncUpdatesForImport(accessToken: string, initialCursor: string | null) {
   try {
-    return await fetchTransactionSyncUpdatesWithRetry(accessToken, initialCursor);
+    return {
+      ...await fetchTransactionSyncUpdatesWithRetry(accessToken, initialCursor),
+      warning: null as { error_code: string; error_message: string } | null
+    };
   } catch (error) {
     if (!isSkippablePlaidTransactionsError(error)) {
       throw error;
     }
 
-    console.warn("plaid_transactions_sync_skipped", getSafePlaidError(error));
-    return emptyTransactionSyncUpdates(initialCursor);
+    const safe = getSafePlaidError(error);
+    console.warn("plaid_transactions_sync_skipped", safe);
+    return {
+      ...emptyTransactionSyncUpdates(initialCursor),
+      warning: {
+        error_code: safe.code,
+        error_message: "Plaid transactions are not available for this connection yet."
+      }
+    };
   }
 }
 
@@ -1768,11 +1851,12 @@ async function updatePlaidItemSyncSuccess(
   userId: string,
   item: PlaidItemRow,
   syncedAt: string,
-  cursor: string | null
+  cursor: string | null,
+  warning: { error_code: string; error_message: string } | null = null
 ) {
   const update: PlaidItemUpdate = {
-    error_code: null,
-    error_message: null,
+    error_code: warning?.error_code ?? null,
+    error_message: warning?.error_message ?? null,
     last_successful_sync_at: syncedAt,
     status: "active",
     transaction_cursor: cursor
@@ -1821,6 +1905,14 @@ function itemSummaryCounts(item: PlaidSyncItemSummary) {
   };
 }
 
+function syncItemSafeCode(summary: PlaidSyncItemSummary) {
+  return summary.errorCode ?? summary.warningCode ?? null;
+}
+
+function syncItemSafeMessage(summary: PlaidSyncItemSummary) {
+  return summary.errorMessage ?? summary.warningMessage ?? null;
+}
+
 function toRunStatus(summary: Pick<PlaidSyncRunSummary, "failed" | "succeeded" | "totalItems">): Exclude<PlaidSyncRunStatus, "running"> {
   if (summary.failed === 0) return "succeeded";
   if (summary.succeeded > 0) return "partial";
@@ -1855,6 +1947,23 @@ async function createPlaidSyncRun(
   return expectData(result, "Create Plaid sync run") as unknown as PlaidSyncRunRow;
 }
 
+async function getLatestRunningPlaidSyncRun(
+  client: FinanceSupabaseClient,
+  userId: string
+) {
+  const result = await client
+    .from("plaid_sync_runs")
+    .select(PLAID_SYNC_RUN_COLUMNS)
+    .eq("user_id", userId)
+    .eq("status", "running")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (result.error) throw new Error(`Load running Plaid sync run: ${result.error.message}`);
+  return (result.data ?? null) as unknown as PlaidSyncRunRow | null;
+}
+
 async function persistPlaidSyncRunItem({
   client,
   item,
@@ -1875,8 +1984,8 @@ async function persistPlaidSyncRunItem({
     completed_at: new Date().toISOString(),
     last_successful_sync_at: summary.lastSuccessfulSyncAt,
     plaid_item_id: item.id,
-    safe_error_code: summary.errorCode ?? null,
-    safe_error_message: summary.errorMessage ?? null,
+    safe_error_code: syncItemSafeCode(summary),
+    safe_error_message: syncItemSafeMessage(summary),
     started_at: startedAt,
     status: summary.errorCode ? "failed" : "succeeded",
     sync_run_id: run.id,
@@ -1955,12 +2064,17 @@ async function syncLoadedPlaidItem(
     transactions: transactionUpdates,
     userId
   });
+  const productSyncSkipped = transactionUpdates.warning ? 1 : 0;
+  const rawTransactionsSkipped = transactionResult.rawTransactionsSkipped + productSyncSkipped;
   const syncedItem = await updatePlaidItemSyncSuccess(
     client,
     userId,
     item,
     syncedAt,
-    transactionUpdates.nextCursor || item.transaction_cursor
+    rawTransactionsSkipped > 0
+      ? item.transaction_cursor
+      : transactionUpdates.nextCursor || item.transaction_cursor,
+    transactionUpdates.warning
   );
 
   return {
@@ -1970,9 +2084,11 @@ async function syncLoadedPlaidItem(
     enrichedTransactionsUpdated: transactionResult.enrichedTransactionsUpdated,
     id: item.id,
     lastSuccessfulSyncAt: syncedItem.last_successful_sync_at,
-    rawTransactionsSkipped: transactionResult.rawTransactionsSkipped,
+    rawTransactionsSkipped,
     rawTransactionsUpserted: transactionResult.rawTransactionsUpserted,
-    transactionsRemoved: transactionResult.transactionsRemoved
+    transactionsRemoved: transactionResult.transactionsRemoved,
+    warningCode: transactionUpdates.warning?.error_code,
+    warningMessage: transactionUpdates.warning?.error_message
   };
 }
 
@@ -2162,6 +2278,20 @@ export async function syncPlaidConnections(
   source: PlaidSyncRunSource = "manual"
 ): Promise<PlaidSyncRunSummary> {
   const items = await listPlaidItemsForSync(client, userId);
+  return syncLoadedPlaidItems({ client, items, source, userId });
+}
+
+async function syncLoadedPlaidItems({
+  client,
+  items,
+  source,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  items: PlaidItemRow[];
+  source: PlaidSyncRunSource;
+  userId: string;
+}) {
   const run = await createPlaidSyncRun(client, userId, source, items.length);
   const results: PlaidSyncItemSummary[] = [];
 
@@ -2202,6 +2332,53 @@ export async function syncPlaidConnections(
   return summary;
 }
 
+export async function syncOpportunisticPlaidConnections(
+  client: FinanceSupabaseClient,
+  userId: string,
+  now = new Date()
+): Promise<PlaidOpportunisticSyncSummary> {
+  const checkedAt = now.toISOString();
+  const runningRun = await getLatestRunningPlaidSyncRun(client, userId);
+  if (isRecentRunningPlaidSync(runningRun, now)) {
+    return {
+      checkedAt,
+      reason: "in_progress",
+      sync: null
+    };
+  }
+
+  const items = await listPlaidItemsForSync(client, userId);
+  if (items.length === 0) {
+    return {
+      checkedAt,
+      reason: "no_items",
+      sync: null
+    };
+  }
+
+  const dueItems = items.filter((item) => isPlaidItemDueForOpportunisticSync(item, now));
+  if (dueItems.length === 0) {
+    return {
+      checkedAt,
+      reason: "recently_synced",
+      sync: null
+    };
+  }
+
+  const sync = await syncLoadedPlaidItems({
+    client,
+    items: dueItems,
+    source: "opportunistic",
+    userId
+  });
+
+  return {
+    checkedAt,
+    reason: "synced",
+    sync
+  };
+}
+
 function toPersistedSyncRunItemSummary(row: PlaidSyncRunItemRow): PlaidSyncRunItemStatusSummary {
   return {
     accountsUpserted: row.accounts_upserted,
@@ -2209,14 +2386,16 @@ function toPersistedSyncRunItemSummary(row: PlaidSyncRunItemRow): PlaidSyncRunIt
     completedAt: row.completed_at,
     enrichedTransactionsInserted: row.enriched_transactions_inserted,
     enrichedTransactionsUpdated: row.enriched_transactions_updated,
-    errorCode: row.safe_error_code ?? undefined,
-    errorMessage: row.safe_error_message ?? undefined,
+    errorCode: row.status === "failed" ? row.safe_error_code ?? undefined : undefined,
+    errorMessage: row.status === "failed" ? row.safe_error_message ?? undefined : undefined,
     id: row.plaid_item_id,
     lastSuccessfulSyncAt: row.last_successful_sync_at,
     rawTransactionsSkipped: row.raw_transactions_skipped,
     rawTransactionsUpserted: row.raw_transactions_upserted,
     status: row.status,
-    transactionsRemoved: row.transactions_removed
+    transactionsRemoved: row.transactions_removed,
+    warningCode: row.status === "succeeded" ? row.safe_error_code ?? undefined : undefined,
+    warningMessage: row.status === "succeeded" ? row.safe_error_message ?? undefined : undefined
   };
 }
 
@@ -2287,12 +2466,20 @@ export async function syncScheduledPlaidConnections(client: FinanceSupabaseClien
   const runs: PlaidSyncRunSummary[] = [];
   let failedUsers = 0;
 
+  const snapshotDate = new Date().toISOString().slice(0, 10);
+
   for (const userId of userIds) {
     try {
       runs.push(await syncPlaidConnections(client, userId, "scheduled"));
     } catch (error) {
       failedUsers += 1;
       console.error("scheduled_plaid_sync_user_failed", getSafePlaidError(error));
+    }
+
+    try {
+      await recordManualInvestmentSnapshots(client as unknown as Parameters<typeof recordManualInvestmentSnapshots>[0], userId, snapshotDate);
+    } catch (error) {
+      console.error("scheduled_manual_investment_snapshot_failed", getSafePlaidError(error));
     }
   }
 
@@ -2322,15 +2509,350 @@ async function loadPlaidItemForRevoke(
   return result.data as unknown as PlaidItemRow;
 }
 
+async function loadIdRows(
+  client: FinanceSupabaseClient,
+  table: string,
+  userId: string,
+  column: string,
+  values: readonly string[],
+  context: string,
+  options: { optional?: boolean } = {}
+) {
+  const ids: string[] = [];
+
+  for (const batch of chunk([...new Set(values)], UPSERT_CHUNK_SIZE)) {
+    if (batch.length === 0) continue;
+
+    const result = await client
+      .from(table)
+      .select("id")
+      .eq("user_id", userId)
+      .in(column, batch);
+    const rows = (options.optional ? expectOptionalData(result, context) : expectData(result, context)) as Array<{ id: string }> | null;
+    if (!rows) continue;
+    ids.push(...rows.map((row) => row.id));
+  }
+
+  return ids;
+}
+
+async function deleteRowsByIds(
+  client: FinanceSupabaseClient,
+  table: string,
+  userId: string,
+  ids: readonly string[],
+  context: string,
+  options: { optional?: boolean } = {}
+) {
+  let deleted = 0;
+
+  for (const batch of chunk([...new Set(ids)], UPSERT_CHUNK_SIZE)) {
+    if (batch.length === 0) continue;
+
+    const result = await client
+      .from(table)
+      .delete()
+      .eq("user_id", userId)
+      .in("id", batch)
+      .select("id");
+    const rows = (options.optional ? expectOptionalData(result, context) : expectData(result, context)) as Array<{ id: string }> | null;
+    if (!rows) continue;
+    deleted += rows.length;
+  }
+
+  return deleted;
+}
+
+async function deleteRowsByTargets(
+  client: FinanceSupabaseClient,
+  table: string,
+  userId: string,
+  targets: Array<{ column: string; eq?: Record<string, unknown>; ids: readonly string[] }>,
+  context: string,
+  options: { optional?: boolean } = {}
+) {
+  const deletedIds = new Set<string>();
+
+  for (const target of targets) {
+    for (const batch of chunk([...new Set(target.ids)], UPSERT_CHUNK_SIZE)) {
+      if (batch.length === 0) continue;
+
+      let query = client
+        .from(table)
+        .delete()
+        .eq("user_id", userId);
+
+      for (const [column, value] of Object.entries(target.eq ?? {})) {
+        query = query.eq(column, value);
+      }
+
+      const result = await query
+        .in(target.column, batch)
+        .select("id");
+      const rows = (options.optional ? expectOptionalData(result, context) : expectData(result, context)) as Array<{ id: string }> | null;
+      if (!rows) continue;
+      rows.forEach((row) => deletedIds.add(row.id));
+    }
+  }
+
+  return deletedIds.size;
+}
+
+async function loadAgentProposalIdsForTargets(
+  client: FinanceSupabaseClient,
+  userId: string,
+  targets: Array<{ kind: string; ids: readonly string[] }>
+) {
+  const proposalIds: string[] = [];
+
+  for (const target of targets) {
+    for (const batch of chunk([...new Set(target.ids)], UPSERT_CHUNK_SIZE)) {
+      if (batch.length === 0) continue;
+
+      const result = await client
+        .from("agent_proposals")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("target_kind", target.kind)
+        .in("target_id", batch);
+      const rows = expectOptionalData(result, "Load Plaid item agent proposal references") as Array<{ id: string }> | null;
+      if (!rows) continue;
+      proposalIds.push(...rows.map((row) => row.id));
+    }
+  }
+
+  return proposalIds;
+}
+
+export async function deletePlaidItemLedgerData({
+  client,
+  itemId,
+  userId
+}: {
+  client: FinanceSupabaseClient;
+  itemId: string;
+  userId: string;
+}): Promise<PlaidItemLedgerDataPurgeSummary> {
+  const accountResult = await client
+    .from("accounts")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("plaid_item_id", itemId);
+  const accountIds = (expectData(accountResult, "Load Plaid item accounts for purge") as Array<{ id: string }>)
+    .map((row) => row.id);
+  const rawResult = await client
+    .from("raw_transactions")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("plaid_item_id", itemId);
+  const rawTransactionIds = (expectData(rawResult, "Load Plaid item raw transactions for purge") as Array<{ id: string }>)
+    .map((row) => row.id);
+  const enrichedTransactionIds = await loadIdRows(
+    client,
+    "enriched_transactions",
+    userId,
+    "account_id",
+    accountIds,
+    "Load Plaid item enriched transactions for purge"
+  );
+  const reviewItemIds = await loadIdRows(
+    client,
+    "review_items",
+    userId,
+    "enriched_transaction_id",
+    enrichedTransactionIds,
+    "Load Plaid item review items for purge",
+    { optional: true }
+  );
+  const splitIds = await loadIdRows(
+    client,
+    "transaction_splits",
+    userId,
+    "enriched_transaction_id",
+    enrichedTransactionIds,
+    "Load Plaid item transaction splits for purge",
+    { optional: true }
+  );
+  const recurringIds = [
+    ...await loadIdRows(
+      client,
+      "recurring_expenses",
+      userId,
+      "account_id",
+      accountIds,
+      "Load Plaid item recurring account references for purge",
+      { optional: true }
+    ),
+    ...await loadIdRows(
+      client,
+      "recurring_expenses",
+      userId,
+      "last_transaction_id",
+      enrichedTransactionIds,
+      "Load Plaid item recurring transaction references for purge",
+      { optional: true }
+    )
+  ];
+  const reimbursementIds = [
+    ...await loadIdRows(
+      client,
+      "reimbursement_records",
+      userId,
+      "enriched_transaction_id",
+      enrichedTransactionIds,
+      "Load Plaid item reimbursement transaction references for purge",
+      { optional: true }
+    ),
+    ...await loadIdRows(
+      client,
+      "reimbursement_records",
+      userId,
+      "received_transaction_id",
+      enrichedTransactionIds,
+      "Load Plaid item reimbursement received references for purge",
+      { optional: true }
+    ),
+    ...await loadIdRows(
+      client,
+      "reimbursement_records",
+      userId,
+      "split_id",
+      splitIds,
+      "Load Plaid item reimbursement split references for purge",
+      { optional: true }
+    )
+  ];
+  const agentProposalIds = await loadAgentProposalIdsForTargets(client, userId, [
+    { ids: enrichedTransactionIds, kind: "enriched_transaction" },
+    { ids: reviewItemIds, kind: "review_item" },
+    { ids: [...new Set(reimbursementIds)], kind: "reimbursement_record" },
+    { ids: [...new Set(recurringIds)], kind: "recurring_expense" }
+  ]);
+  const plaidSyncRunItemIds = await loadIdRows(
+    client,
+    "plaid_sync_run_items",
+    userId,
+    "plaid_item_id",
+    [itemId],
+    "Load Plaid item sync run items for purge",
+    { optional: true }
+  );
+
+  const agentProposalsDeleted = await deleteRowsByIds(
+    client,
+    "agent_proposals",
+    userId,
+    agentProposalIds,
+    "Delete Plaid item agent proposals",
+    { optional: true }
+  );
+  const auditEventsDeleted = await deleteRowsByTargets(client, "audit_events", userId, [
+    { column: "entity_id", eq: { entity_table: "accounts" }, ids: accountIds },
+    { column: "entity_id", eq: { entity_table: "raw_transactions" }, ids: rawTransactionIds },
+    { column: "entity_id", eq: { entity_table: "enriched_transactions" }, ids: enrichedTransactionIds },
+    { column: "entity_id", eq: { entity_table: "review_items" }, ids: reviewItemIds },
+    { column: "entity_id", eq: { entity_table: "transaction_splits" }, ids: splitIds },
+    { column: "entity_id", eq: { entity_table: "reimbursement_records" }, ids: [...new Set(reimbursementIds)] },
+    { column: "entity_id", eq: { entity_table: "recurring_expenses" }, ids: [...new Set(recurringIds)] },
+    { column: "entity_id", eq: { entity_table: "agent_proposals" }, ids: agentProposalIds },
+    { column: "entity_id", eq: { entity_table: "plaid_items" }, ids: [itemId] },
+    { column: "entity_id", eq: { entity_table: "plaid_sync_run_items" }, ids: plaidSyncRunItemIds }
+  ], "Delete Plaid item audit events", { optional: true });
+  const reimbursementRecordsDeleted = await deleteRowsByIds(
+    client,
+    "reimbursement_records",
+    userId,
+    reimbursementIds,
+    "Delete Plaid item reimbursement records",
+    { optional: true }
+  );
+  const recurringExpensesDeleted = await deleteRowsByIds(
+    client,
+    "recurring_expenses",
+    userId,
+    recurringIds,
+    "Delete Plaid item recurring expenses",
+    { optional: true }
+  );
+  const reviewItemsDeleted = await deleteRowsByIds(
+    client,
+    "review_items",
+    userId,
+    reviewItemIds,
+    "Delete Plaid item review items",
+    { optional: true }
+  );
+  const transactionSplitsDeleted = await deleteRowsByIds(
+    client,
+    "transaction_splits",
+    userId,
+    splitIds,
+    "Delete Plaid item transaction splits",
+    { optional: true }
+  );
+  const enrichedTransactionsDeleted = await deleteRowsByIds(
+    client,
+    "enriched_transactions",
+    userId,
+    enrichedTransactionIds,
+    "Delete Plaid item enriched transactions"
+  );
+  const rawTransactionsDeleted = await deleteRowsByIds(
+    client,
+    "raw_transactions",
+    userId,
+    rawTransactionIds,
+    "Delete Plaid item raw transactions"
+  );
+  const balanceSnapshotsDeleted = await deleteRowsByTargets(
+    client,
+    "balance_snapshots",
+    userId,
+    [{ column: "account_id", ids: accountIds }],
+    "Delete Plaid item balance snapshots"
+  );
+  const accountsDeleted = await deleteRowsByIds(
+    client,
+    "accounts",
+    userId,
+    accountIds,
+    "Delete Plaid item accounts"
+  );
+  const plaidSyncRunItemsDeleted = await deleteRowsByIds(
+    client,
+    "plaid_sync_run_items",
+    userId,
+    plaidSyncRunItemIds,
+    "Delete Plaid item sync run items",
+    { optional: true }
+  );
+
+  return {
+    accountsDeleted,
+    agentProposalsDeleted,
+    auditEventsDeleted,
+    balanceSnapshotsDeleted,
+    enrichedTransactionsDeleted,
+    plaidSyncRunItemsDeleted,
+    rawTransactionsDeleted,
+    recurringExpensesDeleted,
+    reimbursementRecordsDeleted,
+    reviewItemsDeleted,
+    transactionSplitsDeleted
+  };
+}
+
 async function updatePlaidItemRevoked(
   client: FinanceSupabaseClient,
   userId: string,
   itemId: string
 ) {
   const update: PlaidItemUpdate = {
+    access_token_ciphertext: encryptPlaidAccessToken(`revoked:${new Date().toISOString()}`),
     error_code: null,
     error_message: null,
-    status: "revoked"
+    status: "revoked",
+    transaction_cursor: null
   };
   const result = await client
     .from("plaid_items")
@@ -2341,6 +2863,28 @@ async function updatePlaidItemRevoked(
     .single();
 
   return expectData(result, "Mark Plaid item revoked") as unknown as PlaidItemPublicRow;
+}
+
+type PlaidItemRemoveClient = Pick<ReturnType<typeof getPlaidClient>, "itemRemove">;
+
+async function removePlaidItemAtProvider(item: PlaidItemRow, plaid: PlaidItemRemoveClient) {
+  const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
+
+  try {
+    await plaid.itemRemove({
+      access_token: accessToken,
+      reason_code: ItemRemoveReasonCode.Other,
+      reason_note: "User disconnected this item from the budgeting app."
+    });
+  } catch (error) {
+    const safe = getSafePlaidError(error);
+    if (TERMINAL_ITEM_REMOVE_ERROR_CODES.has(safe.code)) {
+      console.warn("plaid_connection_item_remove_already_unavailable", safe);
+      return;
+    }
+
+    throw error;
+  }
 }
 
 async function loadInstitutionForPlaidItem(
@@ -2363,23 +2907,26 @@ async function loadInstitutionForPlaidItem(
 export async function revokePlaidConnection({
   client,
   itemId,
+  plaidClient,
   userId
 }: {
   client: FinanceSupabaseClient;
   itemId: string;
+  plaidClient?: PlaidItemRemoveClient;
   userId: string;
 }) {
   const item = await loadPlaidItemForRevoke(client, userId, itemId);
 
   if (item.status !== "revoked") {
-    const accessToken = decryptPlaidAccessToken(item.access_token_ciphertext);
-    const plaid = getPlaidClient();
+    try {
+      await removePlaidItemAtProvider(item, plaidClient ?? getPlaidClient());
+    } catch (error) {
+      if (!(error instanceof PlaidTokenDecryptionError)) {
+        throw error;
+      }
 
-    await plaid.itemRemove({
-      access_token: accessToken,
-      reason_code: ItemRemoveReasonCode.Other,
-      reason_note: "User disconnected this item from the budgeting app."
-    });
+      console.warn("plaid_connection_marked_revoked_without_provider_remove", getSafePlaidError(error));
+    }
   }
 
   const revokedItem = await updatePlaidItemRevoked(client, userId, item.id);

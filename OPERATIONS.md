@@ -113,14 +113,17 @@ After a Vercel deployment:
 3. Sign in with Supabase Auth.
 4. Confirm `/dashboard` loads.
 5. Confirm `/transactions`, `/review`, `/recurring`, `/accounts`, and `/settings` load.
-6. Confirm the dashboard balance scopes, liabilities-due panel, and category trend/month views render without page overflow.
-7. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.
-8. Confirm Settings shows bank connection controls, last successful sync, repair actions when applicable, and session access.
-9. If Calendar is enabled, confirm Settings shows Google Calendar connection state and last successful read.
-10. Run a manual Plaid sync only after confirming the environment.
-11. Export a CSV from `/transactions` and confirm no secrets are present.
-12. Check browser devtools for blocked CSP resources.
-13. Check Vercel logs for safe, non-secret errors only.
+6. Confirm the dashboard Net worth, Liquid, Debt, and Spendable scopes, liabilities-due panel, and category trend/month views render without page overflow.
+7. In an iPhone-sized viewport, confirm the dashboard uses the simplified balance summary instead of the desktop balance chart, the top header stays visible, the bottom nav remains reachable, route loading stays compact, and no horizontal page overflow appears.
+8. In demo mode, confirm Plaid, Calendar, merchant cleanup, transaction edit, review, and recurring write controls show read-only copy instead of starting provider OAuth or write actions.
+9. Confirm `/recurring` shows the next-30-day cashflow calendar using safe merchant/date/amount fields only.
+10. Confirm `/accounts` shows account cards first, only renders recent activity for accounts with transactions, and does not duplicate Settings connection health.
+11. Confirm Settings shows bank connection controls, last successful sync, repair actions when applicable, and session access.
+12. If Calendar is enabled, confirm Settings shows Google Calendar connection state and last successful read.
+13. Run a manual Plaid sync only after confirming the environment.
+14. Export a CSV from `/transactions` and confirm no secrets are present.
+15. Check browser devtools for blocked CSP resources.
+16. Check Vercel logs for safe, non-secret errors only.
 
 When validating reimbursement matching, confirm suggestions are read-only and show only safe app-owned transaction ids, amounts, dates, merchants, confidence, and reasons. A suggested Venmo, Zelle, Cash App, or PayPal inflow must not be linked automatically, must not expose raw Plaid payloads or provider ids, and must not mutate `raw_transactions`, `enriched_transactions`, or `reimbursement_records` without explicit user confirmation.
 
@@ -135,7 +138,10 @@ Expected healthy state:
 - Last successful sync is present after sync.
 - Accounts import with balances.
 - Transactions import without duplicates.
-- Revoked items remain visible as revoked and do not sync again.
+- Disconnecting a Plaid item preserves Ledger finance rows and stops future syncs.
+- The revoked Plaid item remains visible as a disconnected/revoked tombstone with a marker token and cleared cursor, and it does not sync again.
+- Existing account, balance, transaction, review, recurring, and reimbursement rows for that item remain visible for history.
+- Destructive Ledger row cleanup is separate: run `npm run plaid:cleanup -- --user-id <user-id> --institution-name "<institution>"` for a dry run, then add `--execute --confirm DELETE_PLAID_ITEM_DATA` only for a revoked item you intend to purge.
 - Repairable item errors show safe user copy and a Repair action. Repair opens Plaid Link update mode for the selected item, then syncs only that item.
 
 ## Plaid Sync Troubleshooting
@@ -148,8 +154,8 @@ Check:
 - `PLAID_CLIENT_ID` is set,
 - correct Plaid secret is set for `PLAID_ENV`,
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set in production,
-- `PLAID_REDIRECT_URI` or `NEXT_PUBLIC_APP_URL` is valid when using an OAuth redirect,
-- Plaid redirect URI is registered for production OAuth institutions.
+- `PLAID_REDIRECT_URI` is unset for ordinary web Link sessions or is the exact HTTPS URI registered in the Plaid dashboard for OAuth institutions,
+- Plaid redirect URI is registered for production OAuth institutions when `PLAID_REDIRECT_URI` is set.
 
 ### Public token exchange fails
 
@@ -184,7 +190,7 @@ Check:
 - existing legacy-encrypted access tokens can still decrypt after Plaid secret changes,
 - `PLAID_TOKEN_ENCRYPTION_KEY` is set and unchanged in production before adding new production connections.
 
-Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI`, `NEXT_PUBLIC_APP_URL`, and the registered Plaid redirect URI separately. Production Link tokens must not send an `http://localhost` redirect; use a registered HTTPS URL or omit the redirect for local desktop testing.
+Manual and scheduled sync do not need Plaid Link redirect configuration. If sync works and Link token creation fails, inspect `PLAID_REDIRECT_URI` and the registered Plaid redirect URI separately. Production Link tokens do not infer a Plaid redirect from `NEXT_PUBLIC_APP_URL` or `VERCEL_URL`; use an explicit registered HTTPS `PLAID_REDIRECT_URI` only when OAuth redirect support is needed.
 
 ### Connection needs repair
 
@@ -197,7 +203,7 @@ Use `/settings`:
 3. Confirm the app runs a one-item sync after Link succeeds.
 4. Confirm the item returns to active status and `last_successful_sync_at` advances.
 
-If repair fails with `INVALID_ACCESS_TOKEN` or `ITEM_NOT_FOUND`, reconnect the institution. Historical transactions should remain preserved in Ledger, but future imports require a new active Plaid item.
+If repair fails with `INVALID_ACCESS_TOKEN`, `ITEM_NOT_FOUND`, or `PLAID_TOKEN_DECRYPTION_ERROR`, reconnect the institution. Disconnect the stale item to stop future syncs while preserving Ledger history; use the cleanup CLI only if you intentionally want to purge historical rows for a revoked item.
 
 ## Google Calendar Check
 

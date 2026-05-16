@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NextRequest } from "next/server";
 import {
+  getRequestOrigin,
   isAuthorizedBearerToken,
   requireSameOriginReadRequest
 } from "./request";
@@ -21,6 +22,17 @@ test("bearer auth helper requires the configured token", () => {
   assert.equal(isAuthorizedBearerToken(new Headers(), "secret-token"), false);
   assert.equal(isAuthorizedBearerToken(new Headers({ authorization: "Bearer wrong" }), "secret-token"), false);
   assert.equal(isAuthorizedBearerToken(new Headers({ authorization: "Bearer secret-token" }), "secret-token"), true);
+});
+
+test("request origin helper preserves the browser-facing host", () => {
+  const request = new NextRequest("http://localhost:3000/login/demo", {
+    headers: {
+      host: "192.168.1.150:3000",
+      "x-forwarded-proto": "http"
+    }
+  });
+
+  assert.equal(getRequestOrigin(request), "http://192.168.1.150:3000");
 });
 
 test("same-origin read helper rejects cross-site fetches", async () => {

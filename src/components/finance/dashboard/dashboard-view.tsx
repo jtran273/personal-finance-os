@@ -424,7 +424,7 @@ function TrendChart({
 }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [activityMode, setActivityMode] = useState<ActivityMode>("point");
-  const showActivityPanel = scope === "cash" || scope === "cashMinusLiabilities";
+  const showActivityPanel = scope === "cash" || scope === "cashMinusLiabilities" || scope === "liabilities";
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(720);
 
@@ -538,7 +538,9 @@ function TrendChart({
         : afterTransactions;
   const visibleTransactions = scope === "cash"
     ? rawVisibleTransactions.filter((transaction) => dashboardTransactionIncomeAmount(transaction) > 0)
-    : rawVisibleTransactions;
+    : scope === "liabilities"
+      ? rawVisibleTransactions.filter((transaction) => dashboardTransactionSpendingAmount(transaction) > 0)
+      : rawVisibleTransactions;
   const candidateActivityFromDate = !hasSelectedPoint
     ? start.date
     : activityMode === "point"
@@ -595,7 +597,7 @@ function TrendChart({
   const selectedPointValueY = activeCoords
     ? Math.max(padding.top + 12, activeCoords[1] - 10)
     : 0;
-  const activityNoun = scope === "cash" ? "Income" : "Transactions";
+  const activityNoun = scope === "cash" ? "Income" : scope === "liabilities" ? "Charges" : "Transactions";
   const activityTitle = !hasSelectedPoint
     ? `${activityNoun} in selected period`
     : activityMode === "point"

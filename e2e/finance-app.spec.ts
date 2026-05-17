@@ -601,10 +601,10 @@ test("dashboard keeps the balance trend readable on mobile", async ({ baseURL, c
   const chart = page.locator("svg[aria-label='Spendable balance trend']");
   await expect(chart).toBeHidden();
 
-  await expect(page.getByLabel("Mobile balance trend summary")).toBeHidden();
+  await expect(page.getByLabel("Mobile balance trend summary")).toBeVisible();
 
   const oneMonth = page.getByLabel("Balance trend range").getByRole("button", { exact: true, name: "1M" });
-  await expect(oneMonth).toBeHidden();
+  await expect(oneMonth).toBeVisible();
 
   const shellMetrics = await page.evaluate(() => {
     const nav = document.querySelector("nav[aria-label='Main navigation']");

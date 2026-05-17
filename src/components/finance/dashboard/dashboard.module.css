@@ -644,21 +644,20 @@
     font-size: var(--text-meta);
   }
 
-  .trendPanel {
-    display: none;
-  }
-
-  .trendAxis,
-  .activityPanel {
-    display: none;
-  }
-
   .chartInsight,
   .trend,
   .trendAxis,
   .trendSource,
-  .trendSummary,
+  .trendSummary {
+    display: none;
+  }
+
   .activityPanel {
+    margin-top: 12px;
+    padding: 14px;
+  }
+
+  .activityRows .transactionRow:nth-child(n+6) {
     display: none;
   }
 

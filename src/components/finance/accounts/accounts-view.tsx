@@ -107,6 +107,9 @@ function sortAccountsForCards(
   return [...accounts].sort((a, b) => {
     const aLatestDate = latestRecentTransactionDate(recentTransactionsByAccount[a.id] ?? []);
     const bLatestDate = latestRecentTransactionDate(recentTransactionsByAccount[b.id] ?? []);
+    if (aLatestDate && !bLatestDate) return -1;
+    if (!aLatestDate && bLatestDate) return 1;
+
     const recentTransactionDelta = (bLatestDate ?? "").localeCompare(aLatestDate ?? "");
     if (recentTransactionDelta !== 0) return recentTransactionDelta;
 
@@ -355,10 +358,7 @@ export function AccountsView({
   snapshots
 }: AccountsViewProps) {
   const latestSnapshotByAccount = latestSnapshotsByAccount(snapshots);
-  const sortedAccounts = sortAccountsForCards(
-    accounts.filter((account) => (recentTransactionsByAccount[account.id]?.length ?? 0) > 0),
-    recentTransactionsByAccount
-  );
+  const sortedAccounts = sortAccountsForCards(accounts, recentTransactionsByAccount);
 
   return (
     <div className={styles.shell}>
@@ -392,14 +392,6 @@ export function AccountsView({
           <div>
             <strong>No persisted accounts yet</strong>
             <span>Connected accounts will appear here with balances, snapshots, and sync status.</span>
-          </div>
-        </div>
-      ) : sortedAccounts.length === 0 ? (
-        <div className={styles.emptyState}>
-          <Database size={24} aria-hidden />
-          <div>
-            <strong>No recent account activity yet</strong>
-            <span>Accounts will appear here once Tally has recent transactions for them.</span>
           </div>
         </div>
       ) : (

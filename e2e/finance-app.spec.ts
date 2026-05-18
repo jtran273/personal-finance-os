@@ -9,7 +9,7 @@ const responsiveRoutes = [
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
   { path: "/accounts", heading: "Accounts" },
-  { path: "/audit", heading: "Audit history" },
+  { path: "/audit", heading: "Advanced audit" },
   { path: "/settings", heading: "Settings" }
 ] as const;
 
@@ -448,15 +448,18 @@ test("Tally surfaces respect reduced motion preferences", async ({ baseURL, cont
   }
 });
 
-test("dashboard cashflow runway card surfaces current and previous month context", async ({ baseURL, context, page }) => {
+test("dashboard cashflow watch keeps details behind disclosure", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
   const runway = page.getByRole("region", { name: "Monthly cashflow runway" });
   await expect(runway).toBeVisible();
-  await expect(runway.getByText("Cashflow runway")).toBeVisible();
+  await expect(runway.getByText("Cashflow watch")).toBeVisible();
   await expect(runway.getByText("Net cashflow")).toBeVisible();
+  await expect(runway.getByRole("link", { name: /check this/i })).toBeVisible();
+  await expect(runway.getByText("Income this month")).toBeHidden();
+  await runway.getByText("Show cashflow details").click();
   await expect(runway.getByText("Income this month")).toBeVisible();
   await expect(runway.getByText("Spending this month")).toBeVisible();
   await expect(runway.getByText(/Confirmed recurring load/i)).toBeVisible();
@@ -539,8 +542,8 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
 
   const spendingPanel = page.getByLabel("Spending by category");
-  await expect(spendingPanel).toContainText("trusted");
-  await expect(spendingPanel).toContainText("in review");
+  await expect(spendingPanel).not.toContainText("trusted");
+  await expect(spendingPanel).not.toContainText("in review");
   const spendingTrendLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
@@ -796,16 +799,14 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expectNoPageOverflow(page);
 });
 
-test("review page surfaces the AI quality panel for the demo workspace", async ({ baseURL, context, page }) => {
+test("review page keeps AI quality reporting hidden from the main workflow", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/review");
 
   const panel = page.getByRole("region", { name: "AI suggestion quality" });
-  await expect(panel).toBeVisible();
-  await expect(panel.getByText("How AI suggestions land")).toBeVisible();
-  await expect(panel.getByText(/Open with suggestion/i)).toBeVisible();
-  await expect(panel.getByText(/Reviews avoided/i)).toBeVisible();
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByText("How AI suggestions land")).toHaveCount(0);
 });
 
 test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflows", async ({ baseURL, context, page }) => {
@@ -932,7 +933,7 @@ test("audit page lists demo audit events with sanitized summaries", async ({ bas
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/audit");
 
-  await expect(page.getByRole("heading", { name: /audit history is sanitized/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /advanced audit trail/i })).toBeVisible();
   await expect(page.getByText("Seed data loaded")).toBeVisible();
   await expect(page.getByText("AI suggestion accepted")).toBeVisible();
   await expect(page.getByText("Recurring candidate confirmed")).toBeVisible();

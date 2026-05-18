@@ -152,10 +152,10 @@ export function AuditView({
       <section className={styles.safetyPanel} aria-label="Audit safety">
         <ShieldCheck size={17} aria-hidden />
         <div>
-          <h2>Audit history is sanitized</h2>
+          <h2>Advanced audit trail</h2>
           <p>
-            Rows show action, entity label, redacted before and after values, and a shortened actor identifier. Raw Plaid
-            payloads, secrets, tokens, authorization headers, and provider identifiers are never rendered.
+            This debug surface is for tracing changes when something looks wrong. Rows show redacted before and after
+            values; raw Plaid payloads, secrets, tokens, authorization headers, and provider identifiers are never rendered.
           </p>
         </div>
       </section>

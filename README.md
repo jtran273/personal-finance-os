@@ -171,6 +171,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
 | `/recurring` | Recurring expense candidates, confirmed recurring rows, and the next-30-day cashflow calendar |
 | `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; connection health stays in Settings |
+| `/audit` | Advanced sanitized change trail for debugging and data integrity checks |
 | `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection, mobile install/notification boundary, and session access |
 
 ## Stack

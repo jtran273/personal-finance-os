@@ -1,7 +1,5 @@
 import type { AiSuggestionProviderKind } from "@/lib/ai/types";
 import type { CategoryRecord, ReviewQueueItem, TransactionIntent } from "@/lib/db";
-import type { AiSuggestionQualitySummary } from "@/lib/review/quality";
-import { AiQualityPanel } from "./ai-quality-panel";
 import { BulkAcceptForm, type BulkAcceptCandidate } from "./bulk-accept-form";
 import {
   displayCategoryName,
@@ -31,7 +29,6 @@ interface ReviewQueueViewProps {
   isConfigured: boolean;
   isDemo: boolean;
   isSignedIn: boolean;
-  qualitySummary?: AiSuggestionQualitySummary;
   reviewItems: ReviewQueueItem[];
 }
 
@@ -194,7 +191,7 @@ function ReviewCard({
 
       <div className={styles.auditLinkRow}>
         <Link href={`/audit?q=${encodeURIComponent(item.transaction.id)}`}>
-          View this transaction&apos;s audit history →
+          Advanced: audit trail
         </Link>
       </div>
     </article>
@@ -222,7 +219,6 @@ export function ReviewQueueView({
   isConfigured,
   isDemo,
   isSignedIn,
-  qualitySummary,
   reviewItems
 }: ReviewQueueViewProps) {
   const canShowQueue = isConfigured && isSignedIn && !dataError;
@@ -264,10 +260,6 @@ export function ReviewQueueView({
         <Notice role="alert" tone="error">
           {dataError}
         </Notice>
-      ) : null}
-
-      {canShowQueue && qualitySummary && qualitySummary.totalReviewedWithSuggestion + qualitySummary.openCount > 0 ? (
-        <AiQualityPanel summary={qualitySummary} />
       ) : null}
 
       {canShowQueue && bulkCandidates.length > 1 ? (

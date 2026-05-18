@@ -93,10 +93,10 @@ const routeMeta: Record<RouteKey, RouteMeta> = {
     title: "Accounts"
   },
   audit: {
-    eyebrow: "Sanitized change history",
+    eyebrow: "Advanced debug history",
     icon: History,
     label: "Audit",
-    title: "Audit history"
+    title: "Advanced audit"
   },
   settings: {
     eyebrow: "Workspace and access",
@@ -289,7 +289,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item}
                 aria-current={active ? "page" : undefined}
-                className={`nav-item nav-${item} ${active ? "active" : ""}`}
+                className={`nav-item ${active ? "active" : ""}`}
                 href={routeHref[item]}
               >
                 <Icon size={16} aria-hidden />

@@ -18,38 +18,6 @@
     padding: 14px;
     gap: 10px;
   }
-
-  .header h2 {
-    font-size: 19px;
-  }
-
-  .header .sub,
-  .metric .subMuted,
-  .priceChanges {
-    display: none;
-  }
-
-  .netBlock strong {
-    font-size: 23px;
-  }
-
-  .metricGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .metricGrid .metric:nth-child(n+3) {
-    display: none;
-  }
-
-  .metric {
-    min-height: 68px;
-    padding: 9px;
-  }
-
-  .metric span {
-    font-size: var(--text-kbd);
-    line-height: 1.15;
-  }
 }
 
 .header {
@@ -124,6 +92,12 @@
   gap: 10px;
 }
 
+@media (max-width: 480px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .metric {
   display: flex;
   min-width: 0;
@@ -156,6 +130,44 @@
 
 .neg {
   color: var(--neg);
+}
+
+.primaryLink {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: var(--ink);
+  color: var(--surface);
+  font-size: var(--text-ui);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.primaryLink:hover {
+  background: var(--ink-2);
+}
+
+.details {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.details summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.details[open] summary {
+  margin-bottom: 10px;
 }
 
 .priceChanges {

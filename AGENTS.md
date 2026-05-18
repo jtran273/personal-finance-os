@@ -4,7 +4,7 @@ This repo handles personal finance data. Keep changes small, reviewable, and exp
 
 ## Default Workflow
 
-1. Inspect `package.json`, `.github/workflows`, `README.md`, `ARCHITECTURE.md`, `OPERATIONS.md`, and the target code before editing.
+1. Inspect `package.json`, `.github/workflows`, `README.md`, `ARCHITECTURE.md`, `OPERATIONS.md`, `docs/PRODUCT_PRINCIPLES.md`, and the target code before editing.
 2. Check `git status --short --branch` and avoid bundling unrelated local changes.
 3. Prefer focused PRs that preserve the existing app UX unless the task explicitly asks for UX changes.
 4. Update the relevant docs when routes, environment variables, setup steps, security behavior, data shape, or CI behavior change.

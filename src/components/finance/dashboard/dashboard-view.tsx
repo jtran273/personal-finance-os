@@ -1441,7 +1441,6 @@ function CategorySpendingPanel({
 
           <div className={styles.categoryRows}>
             {trend.series.map((row) => {
-              const hasUnresolved = row.unresolvedReviewAmount > 0;
               return (
                 <Link
                   className={styles.categoryRow}
@@ -1451,13 +1450,10 @@ function CategorySpendingPanel({
                     exclude_transfers: true,
                     from: fromDate,
                     q: row.id ? undefined : row.label,
-                    review: hasUnresolved ? "open" : undefined,
                     to: toDate
                   })}
                   key={row.id ?? row.label}
-                  title={hasUnresolved
-                    ? `Open the ${row.openReviewCount} unresolved review item${row.openReviewCount === 1 ? "" : "s"} in ${row.label}`
-                    : `See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label}`}
+                  title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label}`}
                 >
                   <div className={styles.categoryRowHead}>
                     <span className={styles.categoryLegendLabel}>
@@ -1469,14 +1465,8 @@ function CategorySpendingPanel({
                   <div className={styles.categoryRowMeta}>
                     <span>
                       {row.count} {row.count === 1 ? "transaction" : "transactions"}
-                      {row.trustedAmount > 0 ? ` - ${formatMoney(row.trustedAmount)} trusted` : ""}
                     </span>
-                    {hasUnresolved ? (
-                      <span>
-                        {formatMoney(row.unresolvedReviewAmount)} in review
-                        {row.openReviewCount > 0 ? ` (${row.openReviewCount})` : ""}
-                      </span>
-                    ) : row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
+                    {row.pendingAmount > 0 ? <span>{formatMoney(row.pendingAmount)} pending</span> : <span>Cumulative trend</span>}
                   </div>
                 </Link>
               );
@@ -1515,7 +1505,6 @@ function CategorySpendingPanel({
                 const deltaLabel = row.previousAmount > 0
                   ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
                   : "New this month";
-                const hasOpenReview = row.openReviewCount > 0;
                 return (
                   <Link
                     className={styles.categoryRow}
@@ -1525,13 +1514,10 @@ function CategorySpendingPanel({
                       exclude_transfers: true,
                       from: breakdown.fromDate,
                       q: row.id ? undefined : row.label,
-                      review: hasOpenReview ? "open" : undefined,
                       to: breakdown.toDate
                     })}
                     key={row.id ?? row.label}
-                    title={hasOpenReview
-                      ? `Open the ${row.openReviewCount} unresolved review item${row.openReviewCount === 1 ? "" : "s"} in ${row.label} for ${monthLabel}`
-                      : `See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
+                    title={`See the ${row.count} ${row.count === 1 ? "transaction" : "transactions"} in ${row.label} for ${monthLabel}`}
                   >
                     <div className={styles.categoryRowHead}>
                       <strong>{row.label}</strong>
@@ -1543,7 +1529,6 @@ function CategorySpendingPanel({
                     <div className={styles.categoryRowMeta}>
                       <span>
                         {row.percent.toFixed(1)}% - {row.count} {row.count === 1 ? "transaction" : "transactions"}
-                        {row.openReviewCount > 0 ? ` - ${row.openReviewCount} in review` : ""}
                       </span>
                       <span className={deltaTone}>{deltaLabel}</span>
                     </div>

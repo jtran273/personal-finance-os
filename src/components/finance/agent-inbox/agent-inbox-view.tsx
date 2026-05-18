@@ -183,7 +183,7 @@ function ProposalCard({ proposal }: { proposal: AgentInboxProposal }) {
 
       <div className={styles.auditLinkRow}>
         <Link href={`/audit?q=${encodeURIComponent(proposal.transactionId)}`}>
-          View this transaction&apos;s audit history →
+          Advanced: audit trail
         </Link>
       </div>
     </article>

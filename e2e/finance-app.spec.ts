@@ -448,6 +448,22 @@ test("Tally surfaces respect reduced motion preferences", async ({ baseURL, cont
   }
 });
 
+test("dashboard cashflow runway card surfaces current and previous month context", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.setViewportSize({ height: 900, width: 1440 });
+  await page.goto("/dashboard");
+
+  const runway = page.getByRole("region", { name: "Monthly cashflow runway" });
+  await expect(runway).toBeVisible();
+  await expect(runway.getByText("Cashflow runway")).toBeVisible();
+  await expect(runway.getByText("Net cashflow")).toBeVisible();
+  await expect(runway.getByText("Income this month")).toBeVisible();
+  await expect(runway.getByText("Spending this month")).toBeVisible();
+  await expect(runway.getByText(/Confirmed recurring load/i)).toBeVisible();
+  await expect(runway.getByText(/Pending recurring/i)).toBeVisible();
+  await expect(runway.getByText(/Last month/i).first()).toBeVisible();
+});
+
 test("dashboard trend range controls update the change-over-time view", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });

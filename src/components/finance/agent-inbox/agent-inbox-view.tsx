@@ -180,6 +180,12 @@ function ProposalCard({ proposal }: { proposal: AgentInboxProposal }) {
         reviewItemId={proposal.reviewItemId}
         transactionId={proposal.transactionId}
       />
+
+      <div className={styles.auditLinkRow}>
+        <Link href={`/audit?q=${encodeURIComponent(proposal.transactionId)}`}>
+          View this transaction&apos;s audit history →
+        </Link>
+      </div>
     </article>
   );
 }

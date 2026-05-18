@@ -23,6 +23,7 @@ export interface RecurringPriceChangeInsight {
 export interface MonthlyCashflowRunwaySummary {
   asOfDate: string;
   currentMonth: SpendingWindowSummary;
+  previousMonth: SpendingWindowSummary;
   confirmedRecurringMonthlyLoad: number;
   confirmedRecurringCount: number;
   pendingRecurringMonthlyLoad: number;
@@ -315,6 +316,7 @@ export function buildMonthlyCashflowRunwaySummary({
     confirmedRecurringCount: activeExpenses.length,
     confirmedRecurringMonthlyLoad,
     currentMonth: spending.currentMonth,
+    previousMonth: spending.previousMonth,
     isPartialMonth: monthElapsedDays < monthTotalDays,
     monthElapsedDays,
     monthProgressRatio: monthTotalDays === 0 ? 0 : monthElapsedDays / monthTotalDays,

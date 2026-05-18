@@ -37,16 +37,7 @@ This roadmap reflects the current codebase after the May 2026 buildout. Earlier 
 
 ### 2. Add dashboard cashflow runway
 
-**Priority:** P1
-
-**Why:** The recurring page already builds an upcoming cashflow timeline. The dashboard should expose a compact cashflow view alongside balances, liabilities, and category trends.
-
-**Acceptance criteria:**
-
-- Dashboard shows income, spending, net cashflow, and confirmed recurring monthly load for the current and previous months.
-- Pending recurring candidates are shown separately and do not inflate confirmed fixed costs.
-- Recurring price changes appear as actionable insights with links to evidence transactions.
-- Calculations handle partial months and accounts with stale sync state.
+**Status:** Shipped. The dashboard now opens with a cashflow runway card showing current-month income/spending/net with last-month deltas, confirmed vs pending recurring load, and recurring price-change links into the matching transaction. Partial-month and stale-sync state are surfaced inline.
 
 ### 3. Add bulk review actions with per-item preview
 

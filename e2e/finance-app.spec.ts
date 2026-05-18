@@ -448,23 +448,14 @@ test("Tally surfaces respect reduced motion preferences", async ({ baseURL, cont
   }
 });
 
-test("dashboard cashflow watch keeps details behind disclosure", async ({ baseURL, context, page }) => {
+test("dashboard keeps cashflow reporting off the main surface", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
-  const runway = page.getByRole("region", { name: "Monthly cashflow runway" });
-  await expect(runway).toBeVisible();
-  await expect(runway.getByText("Cashflow watch")).toBeVisible();
-  await expect(runway.getByText("Net cashflow")).toBeVisible();
-  await expect(runway.getByRole("link", { name: /check this/i })).toBeVisible();
-  await expect(runway.getByText("Income this month")).toBeHidden();
-  await runway.getByText("Show cashflow details").click();
-  await expect(runway.getByText("Income this month")).toBeVisible();
-  await expect(runway.getByText("Spending this month")).toBeVisible();
-  await expect(runway.getByText(/Confirmed recurring load/i)).toBeVisible();
-  await expect(runway.getByText(/Pending recurring/i)).toBeVisible();
-  await expect(runway.getByText(/Last month/i).first()).toBeVisible();
+  await expect(page.getByRole("region", { name: "Monthly cashflow runway" })).toHaveCount(0);
+  await expect(page.getByText("Cashflow watch")).toHaveCount(0);
+  await expect(page.getByText("Income this month")).toHaveCount(0);
 });
 
 test("dashboard trend range controls update the change-over-time view", async ({ baseURL, context, page }) => {

@@ -51,6 +51,7 @@ Plaid API
 | `/review` | Review queue and split workflow | Review items, categories, transactions |
 | `/recurring` | Recurring candidates and recurring rows | Transactions, recurring expenses |
 | `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; Plaid connection health stays in Settings | Accounts, balance snapshots, and recent transactions |
+| `/audit` | Advanced sanitized change trail for debugging and data integrity checks | Audit events |
 | `/settings` | Plaid connection, sync, repair, disconnect, Calendar read connection, and session access | Plaid and Calendar connections |
 
 ### Route Handlers

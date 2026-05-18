@@ -54,6 +54,7 @@ function deltaLabel(current: number, previous: number) {
 
 export function CashflowRunwayCard({ summary }: CashflowRunwayCardProps) {
   const { currentMonth, previousMonth } = summary;
+  const hasNegativeCashflow = currentMonth.netCashflow < 0;
   const partialMonthNote = summary.isPartialMonth
     ? `Day ${summary.monthElapsedDays} of ${summary.monthTotalDays}`
     : "Full month";
@@ -61,17 +62,35 @@ export function CashflowRunwayCard({ summary }: CashflowRunwayCardProps) {
     summary.syncSummary.staleCount > 0
       ? `${summary.syncSummary.staleCount} account${summary.syncSummary.staleCount === 1 ? "" : "s"} have stale sync — totals may lag.`
       : null;
+  const shouldShow =
+    hasNegativeCashflow ||
+    summary.pendingRecurringCount > 0 ||
+    summary.priceChanges.length > 0 ||
+    Boolean(staleNote);
+
+  if (!shouldShow) return null;
+
+  const primarySignal = summary.priceChanges.length > 0
+    ? `${summary.priceChanges.length} recurring price ${summary.priceChanges.length === 1 ? "change" : "changes"} to check`
+    : hasNegativeCashflow
+      ? `${formatMoney(Math.abs(currentMonth.netCashflow))} more out than in this month`
+      : summary.pendingRecurringCount > 0
+        ? `${summary.pendingRecurringCount} recurring ${summary.pendingRecurringCount === 1 ? "item needs" : "items need"} confirmation`
+        : "Bank data may be stale";
+  const primaryHref = summary.priceChanges.length > 0 || summary.pendingRecurringCount > 0
+    ? "/recurring"
+    : "/transactions";
 
   return (
     <section aria-label="Monthly cashflow runway" className={styles.card}>
       <header className={styles.header}>
         <div>
           <span className={styles.eyebrow}>
-            <TrendingUp size={13} aria-hidden /> Cashflow runway
+            <TrendingUp size={13} aria-hidden /> Cashflow watch
           </span>
-          <h2>{monthLabel(currentMonth.fromDate)}</h2>
+          <h2>{primarySignal}</h2>
           <p className={styles.sub}>
-            {partialMonthNote}. Through {formatDate(summary.asOfDate)}.
+            {monthLabel(currentMonth.fromDate)}. {partialMonthNote}. Through {formatDate(summary.asOfDate)}.
           </p>
         </div>
         <div className={styles.netBlock}>
@@ -83,55 +102,63 @@ export function CashflowRunwayCard({ summary }: CashflowRunwayCardProps) {
         </div>
       </header>
 
-      <div className={styles.metricGrid}>
-        <div className={styles.metric}>
-          <span>Income this month</span>
-          <strong className={styles.pos}>{formatMoney(currentMonth.income)}</strong>
-          <span className={styles.subMuted}>Last month {formatMoney(previousMonth.income)}</span>
-        </div>
-        <div className={styles.metric}>
-          <span>Spending this month</span>
-          <strong className={styles.neg}>{formatMoney(currentMonth.spending)}</strong>
-          <span className={styles.subMuted}>Last month {formatMoney(previousMonth.spending)}</span>
-        </div>
-        <div className={styles.metric}>
-          <span>
-            <Repeat size={11} aria-hidden /> Confirmed recurring load
-          </span>
-          <strong>{formatMoney(summary.confirmedRecurringMonthlyLoad)}</strong>
-          <span className={styles.subMuted}>{summary.confirmedRecurringCount} active</span>
-        </div>
-        <div className={styles.metric}>
-          <span>
-            <TriangleAlert size={11} aria-hidden /> Pending recurring
-          </span>
-          <strong>{formatMoney(summary.pendingRecurringMonthlyLoad)}</strong>
-          <span className={styles.subMuted}>{summary.pendingRecurringCount} pending</span>
-        </div>
-      </div>
+      <Link className={styles.primaryLink} href={primaryHref}>
+        Check this
+        <ArrowRight size={13} aria-hidden />
+      </Link>
 
-      {summary.priceChanges.length > 0 ? (
-        <div className={styles.priceChanges}>
-          <h3>Recurring price changes</h3>
-          <ul>
-            {summary.priceChanges.slice(0, 3).map((change) => (
-              <li key={change.transactionId}>
-                <Link href={`/transactions/${change.transactionId}`}>
-                  <span>{change.merchant}</span>
-                  <span className={change.deltaAmount > 0 ? styles.neg : styles.pos}>
-                    {change.deltaAmount > 0 ? "+" : "−"}
-                    {formatMoneyExact(Math.abs(change.deltaAmount))}
-                  </span>
-                  <span className={styles.subMuted}>
-                    {formatMoneyExact(change.previousAmount)} → {formatMoneyExact(change.currentAmount)}
-                  </span>
-                  <ArrowRight size={12} aria-hidden />
-                </Link>
-              </li>
-            ))}
-          </ul>
+      <details className={styles.details}>
+        <summary>Show cashflow details</summary>
+        <div className={styles.metricGrid}>
+          <div className={styles.metric}>
+            <span>Income this month</span>
+            <strong className={styles.pos}>{formatMoney(currentMonth.income)}</strong>
+            <span className={styles.subMuted}>Last month {formatMoney(previousMonth.income)}</span>
+          </div>
+          <div className={styles.metric}>
+            <span>Spending this month</span>
+            <strong className={styles.neg}>{formatMoney(currentMonth.spending)}</strong>
+            <span className={styles.subMuted}>Last month {formatMoney(previousMonth.spending)}</span>
+          </div>
+          <div className={styles.metric}>
+            <span>
+              <Repeat size={11} aria-hidden /> Confirmed recurring load
+            </span>
+            <strong>{formatMoney(summary.confirmedRecurringMonthlyLoad)}</strong>
+            <span className={styles.subMuted}>{summary.confirmedRecurringCount} active</span>
+          </div>
+          <div className={styles.metric}>
+            <span>
+              <TriangleAlert size={11} aria-hidden /> Pending recurring
+            </span>
+            <strong>{formatMoney(summary.pendingRecurringMonthlyLoad)}</strong>
+            <span className={styles.subMuted}>{summary.pendingRecurringCount} pending</span>
+          </div>
         </div>
-      ) : null}
+
+        {summary.priceChanges.length > 0 ? (
+          <div className={styles.priceChanges}>
+            <h3>Recurring price changes</h3>
+            <ul>
+              {summary.priceChanges.slice(0, 3).map((change) => (
+                <li key={change.transactionId}>
+                  <Link href={`/transactions/${change.transactionId}`}>
+                    <span>{change.merchant}</span>
+                    <span className={change.deltaAmount > 0 ? styles.neg : styles.pos}>
+                      {change.deltaAmount > 0 ? "+" : "-"}
+                      {formatMoneyExact(Math.abs(change.deltaAmount))}
+                    </span>
+                    <span className={styles.subMuted}>
+                      {formatMoneyExact(change.previousAmount)} to {formatMoneyExact(change.currentAmount)}
+                    </span>
+                    <ArrowRight size={12} aria-hidden />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </details>
 
       {staleNote ? <p className={styles.staleNote}>{staleNote}</p> : null}
     </section>

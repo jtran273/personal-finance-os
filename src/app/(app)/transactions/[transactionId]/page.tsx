@@ -146,7 +146,7 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
       />
       <p className={styles.auditLinkRow}>
         <Link href={`/audit?q=${encodeURIComponent(transaction.id)}`}>
-          View this transaction&apos;s audit history →
+          Advanced: audit trail
         </Link>
       </p>
     </>

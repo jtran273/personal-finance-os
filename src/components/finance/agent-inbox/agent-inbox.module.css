@@ -129,6 +129,23 @@
   box-shadow: var(--shadow-sm);
 }
 
+.auditLinkRow {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.auditLinkRow a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.auditLinkRow a:hover {
+  color: var(--ink);
+}
+
 .proposalCard::before,
 .proposalCard::after {
   position: absolute;

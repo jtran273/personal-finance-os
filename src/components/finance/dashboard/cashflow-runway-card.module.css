@@ -2,13 +2,22 @@
   display: flex;
   width: min(100%, var(--content-max));
   min-width: 0;
+  max-width: 100%;
   flex-direction: column;
   gap: 14px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
   padding: 18px;
   background: var(--surface);
   box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 14px;
+    gap: 10px;
+  }
 }
 
 .header {
@@ -79,8 +88,14 @@
 
 .metricGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .metric {

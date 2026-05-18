@@ -180,6 +180,14 @@ function assertMonthlyCashflowRunway(): true {
     throw new Error("Expected monthly income, spending, and net cashflow to exclude transfers and linked reimbursements.");
   }
 
+  if (
+    summary.previousMonth.spending !== 75 ||
+    summary.previousMonth.income !== 0 ||
+    summary.previousMonth.netCashflow !== -75
+  ) {
+    throw new Error("Expected previous month spending/income/net to roll up April activity.");
+  }
+
   if (summary.confirmedRecurringMonthlyLoad !== 2410 || summary.confirmedRecurringCount !== 2) {
     throw new Error("Expected only active recurring expenses to count as confirmed recurring monthly load.");
   }

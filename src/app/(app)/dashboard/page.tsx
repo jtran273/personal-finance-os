@@ -1,3 +1,4 @@
+import { CashflowRunwayCard } from "@/components/finance/dashboard/cashflow-runway-card";
 import { DashboardView } from "@/components/finance/dashboard/dashboard-view";
 import {
   listAccounts,
@@ -16,6 +17,7 @@ import {
   summarizeSync,
   type BalanceTrendScope
 } from "@/lib/finance/balances";
+import { buildMonthlyCashflowRunwaySummary } from "@/lib/finance/cashflow";
 import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { buildCategoryBreakdownsByMonth } from "@/lib/finance/spending";
 import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
@@ -99,6 +101,13 @@ export default async function DashboardPage() {
     transactions: trendTransactions
   });
   const categoryBreakdowns = buildCategoryBreakdownsByMonth(trendTransactions, { asOfDate, monthCount: 6 });
+  const cashflowRunway = buildMonthlyCashflowRunwaySummary({
+    accounts,
+    asOfDate,
+    now,
+    recurringExpenses,
+    transactions: trendTransactions
+  });
   const balanceTransactions = trendTransactions.map((transaction) => ({
     accountId: transaction.accountId,
     accountName: transaction.accountName,
@@ -122,21 +131,24 @@ export default async function DashboardPage() {
   }));
 
   return (
-    <DashboardView
-      accounts={accounts}
-      asOfDate={asOfDate}
-      balanceTransactions={balanceTransactions}
-      balanceTrends={balanceTrends}
-      categoryBreakdowns={categoryBreakdowns}
-      dataError={dataError}
-      isConfigured={isConfigured}
-      isDemo={isDemo}
-      isSignedIn={isSignedIn}
-      liabilitiesDue={liabilitiesDue}
-      recurringExpenses={recurringExpenses}
-      snapshotCount={snapshots.length}
-      syncSummary={summarizeSync(plaidSyncAccounts)}
-      totals={totals}
-    />
+    <>
+      {accounts.length > 0 ? <CashflowRunwayCard summary={cashflowRunway} /> : null}
+      <DashboardView
+        accounts={accounts}
+        asOfDate={asOfDate}
+        balanceTransactions={balanceTransactions}
+        balanceTrends={balanceTrends}
+        categoryBreakdowns={categoryBreakdowns}
+        dataError={dataError}
+        isConfigured={isConfigured}
+        isDemo={isDemo}
+        isSignedIn={isSignedIn}
+        liabilitiesDue={liabilitiesDue}
+        recurringExpenses={recurringExpenses}
+        snapshotCount={snapshots.length}
+        syncSummary={summarizeSync(plaidSyncAccounts)}
+        totals={totals}
+      />
+    </>
   );
 }

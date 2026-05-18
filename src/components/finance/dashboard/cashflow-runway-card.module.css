@@ -1,0 +1,180 @@
+.card {
+  display: flex;
+  width: min(100%, var(--content-max));
+  min-width: 0;
+  max-width: 100%;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 14px;
+    gap: 10px;
+  }
+}
+
+.header {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 720px) {
+  .header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.header h2 {
+  margin: 4px 0 2px;
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.1;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+}
+
+.sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.subMuted {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.netBlock {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  text-align: right;
+}
+
+@media (max-width: 720px) {
+  .netBlock {
+    text-align: left;
+  }
+}
+
+.netBlock span {
+  color: var(--muted);
+  font-size: var(--text-meta);
+}
+
+.netBlock strong {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.metricGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .metricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.metric {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--surface-3);
+}
+
+.metric span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted);
+  font-size: var(--text-label);
+  text-transform: uppercase;
+}
+
+.metric strong {
+  color: var(--ink);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.pos {
+  color: var(--pos);
+}
+
+.neg {
+  color: var(--neg);
+}
+
+.priceChanges {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px dashed var(--line);
+  padding-top: 10px;
+}
+
+.priceChanges h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-ui);
+}
+
+.priceChanges ul {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.priceChanges a {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, auto) 16px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 4px;
+  color: var(--ink);
+  font-size: var(--text-ui);
+  text-decoration: none;
+}
+
+.priceChanges a:hover {
+  background: var(--surface-3);
+}
+
+.staleNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--text-meta);
+}

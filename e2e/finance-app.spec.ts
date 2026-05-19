@@ -393,7 +393,7 @@ test("mobile transactions align filters, card header, and bottom navigation", as
   expect(monthControl.controlHeight).toBe(accountControl.controlHeight);
 
   expect(metrics.mobileMetaDisplay).toBe("flex");
-  expect(metrics.mobileMetaText).toMatch(/\w+.*\w+/);
+  expect(metrics.mobileMetaText).toMatch(/\w+.*\w+.*\w+/);
   expect(metrics.dateCellDisplay).toBe("none");
   expect(metrics.categoryCellDisplay).toBe("none");
   expect(metrics.statusTagsTop).not.toBeNull();
@@ -403,6 +403,7 @@ test("mobile transactions align filters, card header, and bottom navigation", as
   expect(metrics.amountTop).not.toBeNull();
   expect(metrics.merchantTop).not.toBeNull();
   expect(Math.abs((metrics.amountTop ?? 0) - (metrics.merchantTop ?? 0))).toBeLessThanOrEqual(4);
+  expect(metrics.mobileMetaText).toMatch(/•/);
 
   for (const item of metrics.navItems) {
     expect(item.iconCenter, `${item.text} icon center`).not.toBeNull();

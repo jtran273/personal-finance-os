@@ -171,11 +171,9 @@ function compactAccountLabel(transaction: TransactionRecord) {
   const accountName = displayName(transaction.accountName);
   const institutionName = displayName(transaction.institutionName);
   const genericAccount = /^(checking|savings|credit card|cash|depository|account)$/i.test(accountName);
-  const base = genericAccount && institutionName && institutionName !== "Unknown institution"
+  return genericAccount && institutionName && institutionName !== "Unknown institution"
     ? institutionName
     : accountName || institutionName || "Account";
-
-  return transaction.accountMask ? `${base} ••••${transaction.accountMask}` : base;
 }
 
 function emptyTransactionTitle(filtersActive: boolean, accountOnlyFilter: boolean, selectedAccount: AccountRecord | null) {

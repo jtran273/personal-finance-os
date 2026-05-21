@@ -469,11 +469,22 @@ Failure handling:
 
 - `401` means the OpenClaw token is missing, stale, or mismatched; rotate both Tally server env and OpenClaw caller env together,
 - `409` on reply means the proposal was answered, expired, dismissed, or no longer has a question; do not retry the same answer blindly,
+- if `/api/openclaw/outbox?include_budget=false` returns no questions while the daily budget packet still works, verify the production database has the `agent_proposals` migrations applied,
 - if the reply helper cannot find an unanswered proposal, inspect `OPENCLAW_CLARIFICATION_STATE_PATH`; the poll and reply commands must share the same state file,
 - network or `5xx` failures can be retried on the next schedule because duplicate local state prevents re-asking the same user question,
 - delete only the loop state entry for a specific proposal if the user explicitly wants OpenClaw to ask it again.
 
 To rotate `OPENCLAW_TOKEN`, update the token in Vercel/server env and in OpenClaw, redeploy Tally, then confirm an old token receives 401 and the new token can call `/api/openclaw/signals`.
+
+Current OpenClaw production bridge expectation:
+
+- `/api/openclaw/outbox` can always emit a bounded `budget_briefing` packet from existing finance tables.
+- `reimbursement_clarification` packets require the proposal store migrations:
+  - `supabase/migrations/20260513000100_add_agent_proposals.sql`,
+  - `supabase/migrations/20260513000300_add_openclaw_briefing_proposals.sql`,
+  - `supabase/migrations/20260513000500_restrict_direct_sensitive_table_access.sql`.
+- If those migrations are absent, OpenClaw endpoints degrade by returning empty proposal/question arrays instead of exposing database errors to the local iMessage bridge.
+- Do not apply these migrations through the Supabase REST API or with the service-role key alone. Use Supabase SQL Editor, Supabase CLI, or a direct `SUPABASE_DB_URL` migration session, then confirm PostgREST schema reload with a no-budget outbox probe.
 
 ## Database Maintenance
 

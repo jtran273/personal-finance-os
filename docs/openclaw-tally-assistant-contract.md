@@ -107,7 +107,7 @@ The query endpoint accepts JSON only and intentionally does not accept raw natur
 { "intent": "safe_to_spend", "amount": 80 }
 ```
 
-Supported intents are `recent_transactions`, `review_items`, `reimbursements`, and `safe_to_spend`. All read API responses include a safety block and exclude raw provider payloads, Plaid ids, account numbers/masks, phone numbers, notes, service-role keys, and write authority.
+Supported intents are `recent_transactions`, `review_items`, `reimbursements`, and `safe_to_spend`. All read API responses include a safety block and exclude raw provider payloads, Plaid ids, account numbers/masks, phone numbers, notes, service-role keys, and write authority. OpenClaw read handlers should avoid raw Plaid-context hydration and push request limits into the underlying database reads where possible.
 
 ## Fixtures
 

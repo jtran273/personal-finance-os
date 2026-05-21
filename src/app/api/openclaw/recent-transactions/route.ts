@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const { client, userId } = createOpenClawServiceContext();
-    const transactions = await listTransactions(client, userId, { limit });
+    const transactions = await listTransactions(client, userId, { includeRawContext: false, limit });
     return jsonNoStore(buildOpenClawRecentTransactionsResponse(transactions, { limit }));
   } catch (error) {
     if (error instanceof OpenClawRouteConfigurationError) {

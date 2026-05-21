@@ -157,6 +157,11 @@ export interface TransactionListFilters {
   offset?: number;
 }
 
+export interface ReviewItemListOptions {
+  includeRawContext?: boolean;
+  limit?: number;
+}
+
 export interface BalanceSnapshotFilters {
   accountIds?: string[];
   fromDate?: string;
@@ -1024,7 +1029,8 @@ export async function getTransactionById(
 export async function listReviewItems(
   client: FinanceSupabaseClient,
   userId: string,
-  status: ReviewStatus | "all" = "open"
+  status: ReviewStatus | "all" = "open",
+  options: ReviewItemListOptions = {}
 ): Promise<ReviewQueueItem[]> {
   let query = client
     .from("review_items")
@@ -1034,6 +1040,9 @@ export async function listReviewItems(
 
   if (status !== "all") {
     query = query.eq("status", status);
+  }
+  if (options.limit !== undefined) {
+    query = query.limit(options.limit);
   }
 
   const reviewRows = expectData(await query, "List review items");
@@ -1048,7 +1057,8 @@ export async function listReviewItems(
   const transactions = await hydrateTransactions(
     client,
     userId,
-    expectData(transactionResult, "Load review transactions")
+    expectData(transactionResult, "Load review transactions"),
+    { includeRawContext: options.includeRawContext }
   );
   const transactionById = byId(transactions);
 

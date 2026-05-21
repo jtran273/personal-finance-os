@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     const now = new Date();
     const transactions = await listTransactions(client, userId, {
       fromDate: isoDate(addDays(now, -120)),
+      includeRawContext: false,
       limit: 250,
       toDate: isoDate(now)
     });

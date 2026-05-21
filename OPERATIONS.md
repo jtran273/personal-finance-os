@@ -421,7 +421,7 @@ Expected response:
 
 ### OpenClaw read APIs
 
-These endpoints are read-only and share the same `OPENCLAW_TOKEN` bearer auth and server-owned `OPENCLAW_USER_ID` scope. They must not return raw Plaid payloads, Plaid transaction ids, account masks, service-role keys, notes, phone numbers, or direct write authority.
+These endpoints are read-only and share the same `OPENCLAW_TOKEN` bearer auth and server-owned `OPENCLAW_USER_ID` scope. They must not return raw Plaid payloads, Plaid transaction ids, account masks, service-role keys, notes, phone numbers, or direct write authority. OpenClaw-facing readers should also avoid hydrating raw Plaid context when building these DTOs, and should push caller limits into the database query where possible so the API is bounded in output and work.
 
 Examples:
 

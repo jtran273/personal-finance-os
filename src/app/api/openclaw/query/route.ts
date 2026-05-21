@@ -76,13 +76,16 @@ export async function POST(request: NextRequest) {
     const { client, userId } = createOpenClawServiceContext();
 
     if (intent === "recent_transactions") {
-      const transactions = await listTransactions(client, userId, { limit });
+      const transactions = await listTransactions(client, userId, { includeRawContext: false, limit });
       const result = buildOpenClawRecentTransactionsResponse(transactions, { limit });
       return jsonNoStore(buildOpenClawQueryResponse(intent, result, result.generatedAt));
     }
 
     if (intent === "review_items") {
-      const reviewItems = await listReviewItems(client, userId, "open");
+      const reviewItems = await listReviewItems(client, userId, "open", {
+        includeRawContext: false,
+        limit
+      });
       const result = buildOpenClawReviewItemsResponse(reviewItems, { limit });
       return jsonNoStore(buildOpenClawQueryResponse(intent, result, result.generatedAt));
     }
@@ -91,6 +94,7 @@ export async function POST(request: NextRequest) {
       const now = new Date();
       const transactions = await listTransactions(client, userId, {
         fromDate: isoDate(addDays(now, -120)),
+        includeRawContext: false,
         limit: 250,
         toDate: isoDate(now)
       });

@@ -214,8 +214,16 @@ export async function loadOpenClawSignals(
     proposalsOrEmpty({ status: "pending" }),
     listAccounts(client, userId),
     loadUpcomingCalendarContext(client, userId, { generatedAt, now }),
-    listTransactions(client, userId, { fromDate, limit: DEFAULT_TRANSACTION_LIMIT, toDate }),
-    listReviewItems(client, userId, "open"),
+    listTransactions(client, userId, {
+      fromDate,
+      includeRawContext: false,
+      limit: DEFAULT_TRANSACTION_LIMIT,
+      toDate
+    }),
+    listReviewItems(client, userId, "open", {
+      includeRawContext: false,
+      limit: DEFAULT_TRANSACTION_LIMIT
+    }),
     listRecurringExpenses(client, userId)
   ]);
 

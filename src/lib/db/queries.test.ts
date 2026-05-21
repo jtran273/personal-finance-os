@@ -8,6 +8,7 @@ import {
   getAgentProposalById,
   listAgentProposals,
   listAccounts,
+  listReviewItems,
   listTransactions,
   recordClarificationAnswer,
   transactionMatchesSearch,
@@ -580,6 +581,29 @@ test("listTransactions can skip raw Plaid context when callers do not render it"
   assert.equal(client.selectCalls.raw_transactions, undefined);
   assert.equal(transactions[0]?.plaidName, null);
   assert.equal(transactions[0]?.plaidMerchant, null);
+});
+
+test("listReviewItems can bound work and skip raw Plaid context for OpenClaw reads", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  client.reviewItems.push(
+    fixtureReviewRow("review-older", "tx-older", "open"),
+    fixtureReviewRow("review-middle", "tx-middle", "open"),
+    fixtureReviewRow("review-newest", "tx-newest", "open")
+  );
+
+  const reviewItems = await listReviewItems(client.asClient(), userId, "open", {
+    includeRawContext: false,
+    limit: 2
+  });
+
+  assert.equal(reviewItems.length, 2);
+  assert.deepEqual(client.limitCalls.review_items, [2]);
+  assert.equal(client.selectCalls.raw_transactions, undefined);
+  assert.deepEqual(
+    reviewItems.map((item) => item.transaction.plaidMerchant),
+    [null, null]
+  );
 });
 
 test("listTransactions pushes transfer and review filters before hydration limits", async () => {

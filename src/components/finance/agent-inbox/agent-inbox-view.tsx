@@ -17,6 +17,7 @@ import styles from "./agent-inbox.module.css";
 interface AgentInboxViewProps {
   dataError?: string;
   isConfigured: boolean;
+  isDemo: boolean;
   isSignedIn: boolean;
   proposals: AgentInboxProposal[];
   summary: AgentInboxSummary;
@@ -140,7 +141,7 @@ function SafeContext({ proposal }: { proposal: AgentInboxProposal }) {
   );
 }
 
-function ProposalCard({ proposal }: { proposal: AgentInboxProposal }) {
+function ProposalCard({ isDemo, proposal }: { isDemo: boolean; proposal: AgentInboxProposal }) {
   const reasonCopy = getReviewReasonCopy(proposal.reason);
   const acceptReady = proposal.status === "accept-ready";
 
@@ -177,6 +178,7 @@ function ProposalCard({ proposal }: { proposal: AgentInboxProposal }) {
 
       <AgentInboxActions
         canApprove={acceptReady}
+        isDemo={isDemo}
         reviewItemId={proposal.reviewItemId}
         transactionLabel={proposal.merchant}
         transactionId={proposal.transactionId}
@@ -208,6 +210,7 @@ function EmptyInbox() {
 export function AgentInboxView({
   dataError,
   isConfigured,
+  isDemo,
   isSignedIn,
   proposals,
   summary
@@ -240,6 +243,7 @@ export function AgentInboxView({
           <p>
             Approvals apply stored review suggestions to enriched transaction fields. This inbox shows sanitized
             context only and does not expose raw Plaid payloads, provider identifiers, tokens, or secrets.
+            {isDemo ? " Demo proposals are preview-only; sign in to a real workspace before approving or dismissing finance changes." : ""}
           </p>
         </div>
       </section>
@@ -267,7 +271,7 @@ export function AgentInboxView({
       ) : (
         <div className={styles.proposalStack}>
           {proposals.map((proposal) => (
-            <ProposalCard key={proposal.id} proposal={proposal} />
+            <ProposalCard isDemo={isDemo} key={proposal.id} proposal={proposal} />
           ))}
         </div>
       )}

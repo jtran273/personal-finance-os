@@ -10,6 +10,14 @@ This repo handles personal finance data. Keep changes small, reviewable, and exp
 4. Update the relevant docs when routes, environment variables, setup steps, security behavior, data shape, or CI behavior change.
 5. Run the narrowest useful local checks, then broaden based on risk.
 
+## Automation Preference
+
+Default to doing the low-risk, repeatable work automatically so the user has less to manage: inspect relevant files, make focused edits, run the narrowest useful verification, and report the result with skipped checks called out. Prefer durable setup improvements, scripts, tests, and documented repo instructions when they reduce future manual steps without broadening scope.
+
+Still ask before risky, destructive, shared-visible, or finance-data-sensitive actions, including production changes, pushes, PR creation, schema/data migrations, credential handling, and anything that could affect user-owned financial records.
+
+If the user explicitly tells Codex to continue despite a model-routing recommendation, state the routing check once and proceed. Do not repeatedly block on asking the user to switch models.
+
 ## Parallel And Multi-Agent Work
 
 The user prefers Codex to lean toward parallelization when it will improve quality or speed. Treat this as standing permission to use subagents for complex, separable work.

@@ -5,11 +5,15 @@ import {
   buildGoogleCalendarAuthUrl,
   exchangeGoogleCalendarCode,
   GoogleCalendarScopeError,
+  GoogleCalendarSelectionError,
   loadGoogleCalendarAccessToken,
   loadUpcomingCalendarContext,
+  listGoogleCalendars,
   listGoogleCalendarEvents,
   parseGoogleCalendarEvents,
-  refreshGoogleCalendarAccessToken
+  refreshGoogleCalendarList,
+  refreshGoogleCalendarAccessToken,
+  updateGoogleCalendarSelection
 } from "./service";
 import { getGoogleCalendarConfig, GOOGLE_CALENDAR_READONLY_SCOPE } from "./config";
 import { encryptGoogleCalendarToken } from "./token-vault";
@@ -258,6 +262,100 @@ test("Google Calendar read and refresh updates keep status guards", async () => 
   });
 });
 
+test("Google Calendar context reads each selected calendar", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const requestedUrls: string[] = [];
+    const connection = calendarConnection({
+      calendar_list: [
+        { id: "primary", primary: true, summary: "Primary calendar" },
+        { id: "school@example.com", primary: false, summary: "School" }
+      ],
+      selected_calendar_ids: ["primary", "school@example.com"]
+    });
+
+    const context = await loadUpcomingCalendarContext(
+      createCalendarConnectionClient(connection, []),
+      "user-1",
+      {
+        fetcher: async (input) => {
+          requestedUrls.push(String(input));
+          const url = new URL(String(input));
+          const eventTitle = url.pathname.includes("school%40example.com") ? "Class" : "Dinner";
+          return responseJson({
+            items: [{
+              end: { dateTime: "2026-05-13T14:00:00.000Z" },
+              start: { dateTime: "2026-05-13T13:00:00.000Z" },
+              summary: eventTitle
+            }]
+          });
+        },
+        generatedAt: "2026-05-13T12:00:00.000Z",
+        now: new Date("2026-05-13T12:00:00.000Z")
+      }
+    );
+
+    assert.equal(context.status, "ready");
+    assert.equal(context.events.length, 2);
+    assert.ok(requestedUrls.some((url) => new URL(url).pathname.includes("/calendars/primary/events")));
+    assert.ok(requestedUrls.some((url) => new URL(url).pathname.includes("/calendars/school%40example.com/events")));
+  });
+});
+
+test("Google Calendar context keeps usable events when one selected calendar fails", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const updates: CalendarUpdateCall[] = [];
+    const connection = calendarConnection({
+      selected_calendar_ids: ["primary", "school@example.com"]
+    });
+
+    const context = await loadUpcomingCalendarContext(
+      createCalendarConnectionClient(connection, updates),
+      "user-1",
+      {
+        fetcher: async (input) => {
+          const url = new URL(String(input));
+          if (url.pathname.includes("school%40example.com")) {
+            return responseJson({ error: "forbidden" }, 403);
+          }
+
+          return responseJson({
+            items: [{
+              end: { dateTime: "2026-05-13T14:00:00.000Z" },
+              start: { dateTime: "2026-05-13T13:00:00.000Z" },
+              summary: "Dinner"
+            }]
+          });
+        },
+        generatedAt: "2026-05-13T12:00:00.000Z",
+        now: new Date("2026-05-13T12:00:00.000Z")
+      }
+    );
+
+    assert.equal(context.status, "ready");
+    assert.equal(context.events.length, 1);
+    assert.equal(updates.at(-1)?.payload.status, "active");
+  });
+});
+
+test("Google Calendar context marks the connection errored when every selected calendar fails", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const updates: CalendarUpdateCall[] = [];
+    const context = await loadUpcomingCalendarContext(
+      createCalendarConnectionClient(calendarConnection({ selected_calendar_ids: ["primary"] }), updates),
+      "user-1",
+      {
+        fetcher: async () => responseJson({ error: "forbidden" }, 403),
+        generatedAt: "2026-05-13T12:00:00.000Z",
+        now: new Date("2026-05-13T12:00:00.000Z")
+      }
+    );
+
+    assert.equal(context.status, "error");
+    assert.equal(updates.at(-1)?.payload.status, "error");
+    assert.equal(updates.at(-1)?.payload.error_code, "CALENDAR_READ_FAILED");
+  });
+});
+
 test("Google Calendar events parser ignores raw descriptions and attendees", () => {
   const events = parseGoogleCalendarEvents({
     items: [
@@ -289,6 +387,111 @@ test("Google Calendar events parser ignores raw descriptions and attendees", () 
   assert.doesNotMatch(JSON.stringify(events), /guest@example\.com|private notes/);
 });
 
+test("Google Calendar calendar-list helper keeps readable non-deleted calendars", async () => {
+  let requestedUrlText: string | null = null;
+  const calendars = await listGoogleCalendars("access-token", {
+    fetcher: async (input, init) => {
+      requestedUrlText = String(input);
+      assert.equal((init?.headers as Record<string, string>).Authorization, "Bearer access-token");
+      return responseJson({
+        items: [
+          { accessRole: "owner", id: "primary", primary: true, summary: "Primary calendar" },
+          { accessRole: "reader", id: "school@example.com", summary: "School calendar" },
+          { accessRole: "freeBusyReader", id: "busy@example.com", summary: "Busy only" },
+          { accessRole: "reader", deleted: true, id: "deleted@example.com", summary: "Deleted" }
+        ]
+      });
+    }
+  });
+
+  assert.deepEqual(calendars, [
+    { id: "primary", primary: true, selected: false, summary: "Primary calendar" },
+    { id: "school@example.com", primary: false, selected: false, summary: "School calendar" }
+  ]);
+  assert.ok(requestedUrlText);
+  assert.equal(new URL(requestedUrlText).searchParams.get("fields"), "items(id,summary,primary,accessRole,deleted)");
+});
+
+test("Google Calendar selection updates keep only readable stored calendars", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const updates: CalendarUpdateCall[] = [];
+    const client = createCalendarConnectionClient(calendarConnection({
+      calendar_list: [
+        { id: "primary", primary: true, summary: "Primary calendar" },
+        { id: "school@example.com", primary: false, summary: "School" }
+      ],
+      selected_calendar_ids: ["primary"]
+    }), updates);
+
+    const connection = await updateGoogleCalendarSelection(
+      client,
+      "user-1",
+      "calendar-connection-1",
+      ["school@example.com", "unknown@example.com", "school@example.com"]
+    );
+
+    assert.deepEqual(connection.selectedCalendarIds, ["school@example.com"]);
+    assert.deepEqual(updates[0].payload, { selected_calendar_ids: ["school@example.com"] });
+
+    await assert.rejects(
+      () => updateGoogleCalendarSelection(client, "user-1", "calendar-connection-1", ["unknown@example.com"]),
+      GoogleCalendarSelectionError
+    );
+  });
+});
+
+test("Google Calendar calendar-list refresh preserves readable selected calendars", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    const updates: CalendarUpdateCall[] = [];
+    const connection = await refreshGoogleCalendarList(
+      createCalendarConnectionClient(calendarConnection({
+        calendar_list: [
+          { id: "primary", primary: true, summary: "Primary calendar" },
+          { id: "old@example.com", primary: false, summary: "Old" }
+        ],
+        selected_calendar_ids: ["old@example.com", "missing@example.com"]
+      }), updates),
+      "user-1",
+      "calendar-connection-1",
+      {
+        fetcher: async () => responseJson({
+          items: [
+            { accessRole: "owner", id: "primary", primary: true, summary: "Primary calendar" },
+            { accessRole: "reader", id: "school@example.com", summary: "School" }
+          ]
+        }),
+        now: new Date("2026-05-13T12:00:00.000Z")
+      }
+    );
+
+    assert.deepEqual(connection.selectedCalendarIds, ["primary"]);
+    assert.deepEqual(updates[0].payload, {
+      calendar_list: [
+        { id: "primary", primary: true, summary: "Primary calendar" },
+        { id: "school@example.com", primary: false, summary: "School" }
+      ],
+      selected_calendar_ids: ["primary"]
+    });
+  });
+});
+
+test("Google Calendar calendar-list refresh rejects empty readable choices", async () => {
+  await withCalendarEnv(calendarEnv, async () => {
+    await assert.rejects(
+      () => refreshGoogleCalendarList(
+        createCalendarConnectionClient(calendarConnection(), []),
+        "user-1",
+        "calendar-connection-1",
+        {
+          fetcher: async () => responseJson({ items: [] }),
+          now: new Date("2026-05-13T12:00:00.000Z")
+        }
+      ),
+      GoogleCalendarSelectionError
+    );
+  });
+});
+
 test("Google Calendar list helper sends bounded readonly request", async () => {
   let requestedUrlText: string | null = null;
   let requestedAuth: string | null = null;
@@ -301,6 +504,7 @@ test("Google Calendar list helper sends bounded readonly request", async () => {
   };
 
   const events = await listGoogleCalendarEvents("access-token", {
+    calendarId: "school@example.com",
     fetcher,
     timeMax: "2026-05-27T12:00:00.000Z",
     timeMin: "2026-05-13T12:00:00.000Z"
@@ -310,6 +514,7 @@ test("Google Calendar list helper sends bounded readonly request", async () => {
   assert.equal(requestedAuth, "Bearer access-token");
   assert.ok(requestedUrlText);
   const requestedUrl = new URL(requestedUrlText);
+  assert.ok(requestedUrl.pathname.includes("/calendars/school%40example.com/events"));
   assert.equal(requestedUrl.searchParams.get("timeMin"), "2026-05-13T12:00:00.000Z");
   assert.equal(requestedUrl.searchParams.get("timeMax"), "2026-05-27T12:00:00.000Z");
   assert.equal(requestedUrl.searchParams.get("singleEvents"), "true");

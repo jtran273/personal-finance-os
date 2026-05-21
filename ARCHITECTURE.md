@@ -52,7 +52,7 @@ Plaid API
 | `/recurring` | Recurring candidates and recurring rows | Transactions, recurring expenses |
 | `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; Plaid connection health stays in Settings | Accounts, balance snapshots, and recent transactions |
 | `/audit` | Advanced sanitized change trail for debugging and data integrity checks | Audit events |
-| `/settings` | Plaid connection, sync, repair, disconnect, Calendar read connection, and session access | Plaid and Calendar connections |
+| `/settings` | Plaid connection, sync, repair, disconnect, Calendar read connection and calendar selection, and session access | Plaid and Calendar connections |
 
 ### Route Handlers
 
@@ -67,6 +67,8 @@ Plaid API
 | `/api/calendar/auth-url` | `POST` | Start read-only Google Calendar OAuth for the signed-in user; demo mode rejects this write path |
 | `/api/calendar/callback` | `GET` | Complete Google Calendar OAuth after state-cookie validation |
 | `/api/calendar/connections` | `GET` | List signed-in user's Calendar connection status without token fields |
+| `/api/calendar/connections/[connectionId]` | `POST` | Refresh the readable Google Calendar choices for a connection |
+| `/api/calendar/connections/[connectionId]` | `PATCH` | Save selected Google Calendar ids for future OpenClaw event reads |
 | `/api/calendar/connections/[connectionId]` | `DELETE` | Disconnect Calendar and stop future event reads |
 | `/api/agents/proactive-scan/scheduled` | `GET`/`POST` | Run a bounded reimbursement candidate detector scan when authorized with `CRON_SECRET` |
 | `/api/openclaw/signals` | `GET` | Return bearer-auth OpenClaw-safe proposal, planning, and calendar signals |
@@ -88,7 +90,7 @@ Core tables:
 - `plaid_items`: Plaid item ids, encrypted Plaid access tokens, sync cursors, product and error state.
 - `plaid_sync_runs`: persisted initial/manual/scheduled sync summaries with item status, changed-row counts, and safe error metadata.
 - `plaid_sync_run_items`: per-item sync outcomes keyed by app-owned Plaid item row ids, not provider item ids.
-- `google_calendar_connections`: read-only Google Calendar OAuth connection metadata plus encrypted access and refresh tokens. Authenticated clients can select only non-token columns; writes are service-route-only.
+- `google_calendar_connections`: read-only Google Calendar OAuth connection metadata, selected readable calendar ids, cached safe calendar-list metadata, and encrypted access and refresh tokens. Authenticated clients can select only non-token columns; writes are service-route-only.
 - `accounts`: account metadata, balances, masks, active state, and grouping fields.
 - `balance_snapshots`: point-in-time account balances for trends.
 - `categories`: user-owned categories.

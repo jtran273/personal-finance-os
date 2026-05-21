@@ -146,7 +146,7 @@ The transaction list also includes a merchant cleanup control for user-initiated
 
 ### Configure The Workspace
 
-Settings is intentionally minimal: it keeps Plaid connection, sync, repair, and disconnect controls, optional read-only Google Calendar context, mobile install/notification boundary copy, and session access only. Dashboard, Transactions, Review, and Recurring own the day-to-day finance workflow so Settings does not become a second workspace.
+Settings is intentionally minimal: it keeps Plaid connection, sync, repair, and disconnect controls, optional read-only Google Calendar context with selected calendar choices, mobile install/notification boundary copy, and session access only. Dashboard, Transactions, Review, and Recurring own the day-to-day finance workflow so Settings does not become a second workspace.
 
 Tally supports a lightweight home-screen install through a web app manifest and safe product icons. Push notifications are intentionally deferred; conversational reminders and clarification prompts belong to OpenClaw unless a future opt-in Tally status-alert surface passes the security requirements in `docs/mobile-pwa-notifications.md`.
 
@@ -174,7 +174,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | `/recurring` | Recurring expense candidates, confirmed recurring rows, and the next-30-day cashflow calendar |
 | `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; connection health stays in Settings |
 | `/audit` | Advanced sanitized change trail for debugging and data integrity checks |
-| `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection, mobile install/notification boundary, and session access |
+| `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection and calendar selection, mobile install/notification boundary, and session access |
 
 ## Stack
 
@@ -305,7 +305,7 @@ src/components/shell/            Authenticated app navigation shell
 src/components/ui/               Reusable Tally primitives
 src/lib/agents/                  Agent-safe finance manifest and derived proposal helpers
 src/lib/ai/                      AI provider interface, deterministic fallback, optional OpenAI provider
-src/lib/calendar/                Google Calendar OAuth, token vault, event listing, and safe context builder
+src/lib/calendar/                Google Calendar OAuth, token vault, selected-calendar event listing, and safe context builder
 src/lib/db/                      Typed Supabase query helpers and app-facing finance records
 src/lib/demo/                    Local demo mode and seeded in-memory finance client
 src/lib/export/                  CSV export helpers

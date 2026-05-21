@@ -1006,6 +1006,11 @@ kbd {
   opacity: 0.5;
 }
 
+.btn-compact {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .btn-ghost {
   display: inline-flex;
   align-items: center;
@@ -2209,6 +2214,8 @@ kbd {
 }
 
 .plaid-connection-copy {
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   flex: 1;
 }
@@ -2226,6 +2233,71 @@ kbd {
   color: var(--text);
   font-size: 12px;
   font-weight: 550;
+}
+
+.calendar-selection {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin-top: 10px;
+  border-top: 1px solid var(--line-2);
+  padding-top: 10px;
+}
+
+.calendar-selection-head,
+.calendar-selection-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.calendar-selection-head {
+  justify-content: space-between;
+}
+
+.calendar-selection-head > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.calendar-option-list {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.calendar-option {
+  display: inline-flex;
+  max-width: min(100%, 280px);
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 8px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.calendar-option input {
+  margin: 0;
+}
+
+.calendar-option span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-option em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
 }
 
 .plaid-status {
@@ -2964,14 +3036,22 @@ kbd {
 
   .calendar-actions,
   .calendar-actions .btn,
+  .calendar-selection-actions,
+  .calendar-selection-actions .btn,
   .plaid-actions,
   .plaid-actions .btn {
     width: 100%;
   }
 
   .calendar-actions .btn,
+  .calendar-selection-actions .btn,
   .plaid-actions .btn {
     justify-content: center;
+  }
+
+  .calendar-selection-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .plaid-disconnect {

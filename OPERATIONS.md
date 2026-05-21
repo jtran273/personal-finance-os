@@ -213,8 +213,9 @@ Expected healthy state:
 
 - Google OAuth env vars are set only on deployments that should support Calendar.
 - `/settings` can start Google OAuth and return to `/settings?calendar=connected`.
+- `/settings` can refresh readable Google Calendar choices and save at least one selected calendar for OpenClaw context.
 - Calendar connection rows never expose encrypted access or refresh token fields to authenticated browser clients.
-- OpenClaw signals include `calendarContext` with `status: "ready"` only when Calendar is connected.
+- OpenClaw signals include `calendarContext` with `status: "ready"` only when Calendar is connected and at least one selected calendar can be read.
 - Agent context includes only event start/end, redacted title, `locationCity`, all-day flag, and suspected category.
 - `npm run calendar:prod-smoke` passes with production Calendar env vars loaded. Add `OPENCLAW_SIGNALS_URL` and `OPENCLAW_TOKEN` to safely verify the live `/api/openclaw/signals` response shape without printing secrets or raw event data.
 - The smoke check confirms category inference for travel, dining, gift, and wedding planning signals.

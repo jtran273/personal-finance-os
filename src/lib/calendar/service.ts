@@ -22,11 +22,16 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API_URL = "https://www.googleapis.com/calendar/v3";
 const DEFAULT_EVENT_LIMIT = 25;
+const MAX_SELECTED_CALENDARS = 10;
+const MAX_CALENDAR_SUMMARY_LENGTH = 120;
 const REFRESH_SKEW_MS = 120_000;
+const READABLE_CALENDAR_ROLES = new Set(["owner", "reader", "writer"]);
 const CONNECTION_COLUMNS = [
   "id",
   "google_calendar_id",
   "calendar_summary",
+  "calendar_list",
+  "selected_calendar_ids",
   "status",
   "error_code",
   "error_message",
@@ -54,6 +59,13 @@ export class GoogleCalendarScopeError extends Error {
   }
 }
 
+export class GoogleCalendarSelectionError extends Error {
+  constructor(message = "Select at least one readable Google Calendar.") {
+    super(message);
+    this.name = "GoogleCalendarSelectionError";
+  }
+}
+
 export interface GoogleCalendarTokenSet {
   accessToken: string;
   expiresAt: string;
@@ -62,13 +74,22 @@ export interface GoogleCalendarTokenSet {
   tokenType: string;
 }
 
+export interface GoogleCalendarListItem {
+  id: string;
+  primary: boolean;
+  selected: boolean;
+  summary: string;
+}
+
 export interface GoogleCalendarConnectionSummary {
   calendarSummary: string | null;
+  calendars: GoogleCalendarListItem[];
   createdAt: string;
   errorCode: string | null;
   errorMessage: string | null;
   id: string;
   lastSuccessfulSyncAt: string | null;
+  selectedCalendarIds: string[];
   status: GoogleCalendarConnectionStatus;
   updatedAt: string;
 }
@@ -95,24 +116,41 @@ interface GoogleCalendarEventsResponse {
   items?: GoogleCalendarEvent[];
 }
 
+interface GoogleCalendarListResponseItem {
+  accessRole?: string;
+  deleted?: boolean;
+  id?: string;
+  primary?: boolean;
+  summary?: string;
+}
+
+interface GoogleCalendarListResponse {
+  items?: GoogleCalendarListResponseItem[];
+}
+
 function toConnectionSummary(row: Pick<
   GoogleCalendarConnectionRow,
   | "calendar_summary"
+  | "calendar_list"
   | "created_at"
   | "error_code"
   | "error_message"
   | "id"
   | "last_successful_sync_at"
+  | "selected_calendar_ids"
   | "status"
   | "updated_at"
 >): GoogleCalendarConnectionSummary {
+  const selectedCalendarIds = normalizeSelectedCalendarIds(row.selected_calendar_ids);
   return {
     calendarSummary: row.calendar_summary,
+    calendars: parseStoredCalendarList(row.calendar_list, selectedCalendarIds),
     createdAt: row.created_at,
     errorCode: row.error_code,
     errorMessage: row.error_message,
     id: row.id,
     lastSuccessfulSyncAt: row.last_successful_sync_at,
+    selectedCalendarIds,
     status: row.status,
     updatedAt: row.updated_at
   };
@@ -144,6 +182,89 @@ function assertReadonlyScope(scope: string) {
 
 function stringValue(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function safeCalendarId(value: unknown) {
+  const id = stringValue(value);
+  return id && id.length <= 512 ? id : null;
+}
+
+function safeCalendarSummary(value: unknown) {
+  const summary = stringValue(value);
+  if (!summary) return "Calendar";
+  return summary.slice(0, MAX_CALENDAR_SUMMARY_LENGTH);
+}
+
+function normalizeSelectedCalendarIds(value: unknown) {
+  const ids = Array.isArray(value) ? value : [];
+  const normalized = ids
+    .map((id) => safeCalendarId(id))
+    .filter((id): id is string => id !== null);
+
+  return Array.from(new Set(normalized)).slice(0, MAX_SELECTED_CALENDARS);
+}
+
+function parseStoredCalendarList(value: unknown, selectedCalendarIds: string[]) {
+  const selected = new Set(selectedCalendarIds);
+  const items = Array.isArray(value) ? value : [];
+
+  return items
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const record = item as Record<string, unknown>;
+      const id = safeCalendarId(record.id);
+      if (!id) return null;
+
+      return {
+        id,
+        primary: record.primary === true,
+        selected: selected.has(id),
+        summary: safeCalendarSummary(record.summary)
+      } satisfies GoogleCalendarListItem;
+    })
+    .filter((item): item is GoogleCalendarListItem => item !== null);
+}
+
+function parseGoogleCalendarListResponse(value: unknown): GoogleCalendarListItem[] {
+  const body = value as GoogleCalendarListResponse;
+  const items = Array.isArray(body?.items) ? body.items : [];
+
+  const calendars = items
+    .filter((item) => !item.deleted)
+    .filter((item) => READABLE_CALENDAR_ROLES.has(item.accessRole ?? ""))
+    .map((item): GoogleCalendarListItem | null => {
+      const id = safeCalendarId(item.id);
+      if (!id) return null;
+
+      return {
+        id,
+        primary: item.primary === true,
+        selected: false,
+        summary: safeCalendarSummary(item.summary)
+      } satisfies GoogleCalendarListItem;
+    })
+    .filter((item): item is GoogleCalendarListItem => item !== null);
+
+  return Array.from(new Map(calendars.map((calendar) => [calendar.id, calendar])).values());
+}
+
+function storedCalendarList(calendars: GoogleCalendarListItem[]) {
+  return calendars.map((calendar) => ({
+    id: calendar.id,
+    primary: calendar.primary,
+    summary: calendar.summary
+  }));
+}
+
+function defaultSelectedCalendarIds(calendars: GoogleCalendarListItem[]) {
+  const primary = calendars.find((calendar) => calendar.primary)?.id;
+  return [primary ?? calendars[0]?.id ?? "primary"];
+}
+
+function requireReadableCalendars(calendars: GoogleCalendarListItem[]) {
+  if (calendars.length === 0) {
+    throw new GoogleCalendarSelectionError("No readable Google Calendars were returned.");
+  }
 }
 
 function tokenSetFromResponse(value: unknown, options: { now: Date; previousScope?: string }): GoogleCalendarTokenSet {
@@ -240,19 +361,45 @@ export function refreshGoogleCalendarAccessToken(
   return postTokenRequest(params, options);
 }
 
+export async function listGoogleCalendars(
+  accessToken: string,
+  options: {
+    fetcher?: CalendarFetch;
+  } = {}
+): Promise<GoogleCalendarListItem[]> {
+  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/users/me/calendarList`);
+  url.searchParams.set("fields", "items(id,summary,primary,accessRole,deleted)");
+
+  const response = await (options.fetcher ?? fetch)(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const body = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new GoogleCalendarApiError("Google Calendar list request failed.", response.status);
+  }
+
+  return parseGoogleCalendarListResponse(body);
+}
+
 export async function upsertGoogleCalendarConnection(
   client: FinanceSupabaseClient,
   userId: string,
-  tokens: GoogleCalendarTokenSet
+  tokens: GoogleCalendarTokenSet,
+  options: GoogleCalendarServiceOptions = {}
 ) {
   if (!tokens.refreshToken) {
     throw new GoogleCalendarApiError("Google Calendar did not return an offline refresh token.");
   }
 
+  const calendars = await listGoogleCalendars(tokens.accessToken, options).catch(() => []);
+  const selectedCalendarIds = defaultSelectedCalendarIds(calendars);
+
   const result = await client
     .from("google_calendar_connections")
     .upsert({
       access_token_ciphertext: encryptGoogleCalendarToken(tokens.accessToken),
+      calendar_list: storedCalendarList(calendars),
       calendar_summary: "Primary calendar",
       error_code: null,
       error_message: null,
@@ -261,6 +408,7 @@ export async function upsertGoogleCalendarConnection(
       last_successful_sync_at: null,
       refresh_token_ciphertext: encryptGoogleCalendarToken(tokens.refreshToken),
       scope: tokens.scope,
+      selected_calendar_ids: selectedCalendarIds,
       status: "active",
       token_type: tokens.tokenType,
       user_id: userId
@@ -302,6 +450,83 @@ export async function disconnectGoogleCalendarConnection(
     .single();
 
   return toConnectionSummary(expectData(result, "Disconnect Google Calendar connection"));
+}
+
+async function loadGoogleCalendarConnection(
+  client: FinanceSupabaseClient,
+  userId: string,
+  connectionId: string
+) {
+  const result = await client
+    .from("google_calendar_connections")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("id", connectionId)
+    .single();
+
+  return expectData(result, "Load Google Calendar connection");
+}
+
+export async function updateGoogleCalendarSelection(
+  client: FinanceSupabaseClient,
+  userId: string,
+  connectionId: string,
+  selectedCalendarIds: unknown
+) {
+  const connection = await loadGoogleCalendarConnection(client, userId, connectionId);
+  const calendars = parseStoredCalendarList(connection.calendar_list, []);
+  const availableIds = new Set(calendars.map((calendar) => calendar.id));
+  const selected = normalizeSelectedCalendarIds(selectedCalendarIds)
+    .filter((calendarId) => availableIds.has(calendarId));
+
+  if (selected.length === 0) throw new GoogleCalendarSelectionError();
+
+  const result = await client
+    .from("google_calendar_connections")
+    .update({
+      selected_calendar_ids: selected
+    })
+    .eq("user_id", userId)
+    .eq("id", connectionId)
+    .select(CONNECTION_COLUMNS)
+    .single();
+
+  return toConnectionSummary(expectData(result, "Update Google Calendar selection"));
+}
+
+export async function refreshGoogleCalendarList(
+  client: FinanceSupabaseClient,
+  userId: string,
+  connectionId: string,
+  options: GoogleCalendarServiceOptions = {}
+) {
+  const connection = await loadGoogleCalendarConnection(client, userId, connectionId);
+  if (connection.status === "revoked") {
+    throw new GoogleCalendarSelectionError("Reconnect Google Calendar before refreshing calendar choices.");
+  }
+
+  const accessToken = await loadGoogleCalendarAccessToken(client, userId, connection, options);
+  const calendars = await listGoogleCalendars(accessToken, options);
+  requireReadableCalendars(calendars);
+  const availableIds = new Set(calendars.map((calendar) => calendar.id));
+  const existingSelected = normalizeSelectedCalendarIds(connection.selected_calendar_ids)
+    .filter((calendarId) => availableIds.has(calendarId));
+  const selectedCalendarIds = existingSelected.length > 0
+    ? existingSelected
+    : defaultSelectedCalendarIds(calendars);
+
+  const result = await client
+    .from("google_calendar_connections")
+    .update({
+      calendar_list: storedCalendarList(calendars),
+      selected_calendar_ids: selectedCalendarIds
+    })
+    .eq("user_id", userId)
+    .eq("id", connectionId)
+    .select(CONNECTION_COLUMNS)
+    .single();
+
+  return toConnectionSummary(expectData(result, "Refresh Google Calendar list"));
 }
 
 async function loadActiveGoogleCalendarConnection(client: FinanceSupabaseClient, userId: string) {
@@ -403,13 +628,15 @@ export function parseGoogleCalendarEvents(value: unknown): CalendarEventInput[] 
 export async function listGoogleCalendarEvents(
   accessToken: string,
   options: {
+    calendarId?: string;
     fetcher?: CalendarFetch;
     maxResults?: number;
     timeMax: string;
     timeMin: string;
   }
 ) {
-  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/primary/events`);
+  const calendarId = encodeURIComponent(safeCalendarId(options.calendarId) ?? "primary");
+  const url = new URL(`${GOOGLE_CALENDAR_API_URL}/calendars/${calendarId}/events`);
   url.searchParams.set("maxResults", String(options.maxResults ?? DEFAULT_EVENT_LIMIT));
   url.searchParams.set("fields", "items(status,start,end,summary,location)");
   url.searchParams.set("orderBy", "startTime");
@@ -428,6 +655,35 @@ export async function listGoogleCalendarEvents(
   }
 
   return parseGoogleCalendarEvents(body);
+}
+
+async function listSelectedGoogleCalendarEvents(
+  accessToken: string,
+  selectedCalendarIds: string[],
+  options: {
+    fetcher?: CalendarFetch;
+    timeMax: string;
+    timeMin: string;
+  }
+) {
+  const calendarIds = normalizeSelectedCalendarIds(selectedCalendarIds);
+  const ids = calendarIds.length > 0 ? calendarIds : ["primary"];
+  const eventSets = await Promise.allSettled(ids.map((calendarId) => listGoogleCalendarEvents(accessToken, {
+    calendarId,
+    fetcher: options.fetcher,
+    timeMax: options.timeMax,
+    timeMin: options.timeMin
+  })));
+  const fulfilled = eventSets
+    .filter((result): result is PromiseFulfilledResult<CalendarEventInput[]> => result.status === "fulfilled");
+
+  if (fulfilled.length === 0) {
+    throw new GoogleCalendarApiError("Google Calendar events request failed.");
+  }
+
+  return fulfilled
+    .flatMap((result) => result.value)
+    .sort((first, second) => first.start.localeCompare(second.start));
 }
 
 function calendarWindow(now: Date, days = 14) {
@@ -495,7 +751,7 @@ export async function loadUpcomingCalendarContext(
   try {
     const accessToken = await loadGoogleCalendarAccessToken(client, userId, connection, options);
     const window = calendarWindow(now);
-    const events = await listGoogleCalendarEvents(accessToken, {
+    const events = await listSelectedGoogleCalendarEvents(accessToken, connection.selected_calendar_ids, {
       fetcher: options.fetcher,
       timeMax: window.timeMax,
       timeMin: window.timeMin

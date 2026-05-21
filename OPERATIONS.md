@@ -352,7 +352,7 @@ Routes:
 
 ```text
 GET /api/openclaw/signals?since=<iso>
-GET /api/openclaw/outbox?since=<iso>&limit=<n>&include_budget=<true|false>
+GET /api/openclaw/outbox?since=<iso>&limit=<n>&include_budget=<true|false>&min_priority=<normal|high>
 POST /api/openclaw/replies
 GET|POST /api/openclaw/briefing/scheduled
 ```
@@ -378,6 +378,13 @@ The preferred OpenClaw delivery contract is `GET /api/openclaw/outbox`. It wraps
 - `reimbursement_clarification`: one concise question plus a `replyAction` pointing back to `/api/openclaw/replies`.
 
 The outbox does not contain delivery addresses, phone numbers, iMessage metadata, Twilio credentials, Plaid ids, raw provider payloads, service-role keys, or write authority. OpenClaw owns delivery/dedupe state; Tally owns finance records and reply validation.
+
+Recommended production cadence:
+
+- use `min_priority=high&limit=5` for scheduled OpenClaw polls,
+- keep scheduled polls low-frequency, around every 6 hours, because Plaid data is normally refreshed manually rather than every few minutes,
+- run the same high-priority poll on demand immediately after a manual Plaid sync,
+- use `include_budget=true&limit=5` only for manual status pulls or explicit user requests.
 
 Manual smoke check:
 

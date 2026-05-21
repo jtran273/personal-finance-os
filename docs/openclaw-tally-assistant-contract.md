@@ -85,6 +85,8 @@ Recommended polling modes:
 - `min_priority=high&limit=5`: allow future high-priority budget warnings while suppressing normal status summaries.
 - `include_budget=true&limit=5`: manual status pull, useful when James explicitly asks for the current Tally picture.
 
+Because Plaid sync is usually manual, OpenClaw should not poll this endpoint every few minutes. A low-frequency schedule such as every 6 hours is enough for background checks, with an immediate on-demand `min_priority=high&limit=5` poll after manual Plaid sync.
+
 ## Fixtures
 
 Example payloads live under `src/lib/agents/fixtures/`:
@@ -97,4 +99,4 @@ The fixture pair demonstrates a shared dinner, an incoming payment, and a propos
 ## Follow-Ups
 
 1. Tally should add a persistent feedback table or audit-backed event shape for accepted, rejected, corrected, and ignored assistant suggestions. That storage should keep the original proposal id/context id, the final user action, and sanitized rationale without storing raw provider payloads.
-2. OpenClaw should add a scheduled client that polls `/api/openclaw/outbox`, deduplicates message ids, and forwards the body through the configured notification channel. Replies should post only to `/api/openclaw/replies` with the proposal id from `replyAction`.
+2. OpenClaw should keep its scheduled `/api/openclaw/outbox` client low-frequency, deduplicate message ids, and forward the body through the configured notification channel. Replies should post only to `/api/openclaw/replies` with the proposal id from `replyAction`.

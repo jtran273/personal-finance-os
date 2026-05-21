@@ -88,6 +88,7 @@ Existing Plaid access tokens may have been encrypted with the legacy Plaid-deriv
 2. Enable Supabase Auth email/password sign-in.
 3. Apply all SQL files in `supabase/migrations` in order.
    The Plaid opportunistic sync work requires `supabase/migrations/20260515000100_add_opportunistic_plaid_sync_source.sql`.
+   OpenClaw reimbursement questions require the proposal-store sequence `20260513000100_add_agent_proposals.sql`, `20260513000300_add_openclaw_briefing_proposals.sql`, and `20260513000500_restrict_direct_sensitive_table_access.sql`.
 4. Verify RLS is enabled on finance tables.
 5. Verify `plaid_items.access_token_ciphertext`, `plaid_items.plaid_item_id`, and `plaid_items.transaction_cursor` are not selectable by `anon` or `authenticated`.
 6. Verify `raw_transactions.raw_payload`, provider transaction ids, location, and payment metadata are not selectable by `anon` or `authenticated`.

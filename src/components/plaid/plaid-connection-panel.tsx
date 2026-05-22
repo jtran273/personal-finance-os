@@ -154,12 +154,13 @@ function formatRelativeTime(value: string | null, now: number | null) {
 }
 
 function getEnrichedTransactionCount(summary: SyncItemSummary) {
-  return summary.enrichedTransactionsInserted + summary.enrichedTransactionsUpdated;
+  return safeCount(summary.enrichedTransactionsInserted) + safeCount(summary.enrichedTransactionsUpdated);
 }
 
 function formatSyncItemMessage(summary: SyncItemSummary) {
-  const skipped = summary.rawTransactionsSkipped > 0 ? `, ${summary.rawTransactionsSkipped} skipped` : "";
-  return `Sync result: ${summary.accountsUpserted} accounts, ${summary.rawTransactionsUpserted} raw transactions${skipped}, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
+  const rawTransactionsSkipped = safeCount(summary.rawTransactionsSkipped);
+  const skipped = rawTransactionsSkipped > 0 ? `, ${rawTransactionsSkipped} skipped` : "";
+  return `Sync result: ${safeCount(summary.accountsUpserted)} accounts, ${safeCount(summary.rawTransactionsUpserted)} raw transactions${skipped}, ${getEnrichedTransactionCount(summary)} enriched transactions, 0 failures.`;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -171,6 +172,44 @@ async function readJson<T>(response: Response): Promise<T> {
   }
 
   return body as T;
+}
+
+function safeCount(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function asConnectionList(value: unknown): PlaidConnectionSummary[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.filter((connection): connection is PlaidConnectionSummary =>
+    typeof connection === "object" &&
+    connection !== null &&
+    typeof (connection as PlaidConnectionSummary).id === "string" &&
+    typeof (connection as PlaidConnectionSummary).institutionName === "string" &&
+    ["active", "error", "revoked"].includes((connection as PlaidConnectionSummary).status)
+  );
+}
+
+function asSyncRunSummary(value: unknown): SyncRunSummary | null {
+  if (typeof value !== "object" || value === null) return null;
+
+  const candidate = value as SyncRunSummary;
+  if (!["succeeded", "partial", "failed"].includes(candidate.status)) return null;
+
+  return {
+    ...candidate,
+    accountsUpserted: safeCount(candidate.accountsUpserted),
+    balanceSnapshotsUpserted: safeCount(candidate.balanceSnapshotsUpserted),
+    enrichedTransactionsInserted: safeCount(candidate.enrichedTransactionsInserted),
+    enrichedTransactionsUpdated: safeCount(candidate.enrichedTransactionsUpdated),
+    failed: safeCount(candidate.failed),
+    items: Array.isArray(candidate.items) ? candidate.items : [],
+    rawTransactionsSkipped: safeCount(candidate.rawTransactionsSkipped),
+    rawTransactionsUpserted: safeCount(candidate.rawTransactionsUpserted),
+    succeeded: safeCount(candidate.succeeded),
+    totalItems: safeCount(candidate.totalItems),
+    transactionsRemoved: safeCount(candidate.transactionsRemoved)
+  };
 }
 
 function buildPlaidExitDiagnostic(error: PlaidLinkError | null, metadata: PlaidLinkOnExitMetadata) {
@@ -281,7 +320,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
       )
       .then((data) => {
         if (!ignore) {
-          setConnections(data.connections);
+          setConnections(asConnectionList(data.connections));
         }
       })
       .catch((loadError: unknown) => {
@@ -334,18 +373,23 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
         readJson<SyncResponse>(response)
       );
 
-      setConnections(data.connections);
+      const sync = asSyncRunSummary(data.sync);
+      if (!sync) {
+        throw new Error("Plaid sync returned an incomplete result. Refresh Settings and try again.");
+      }
+
+      setConnections(asConnectionList(data.connections));
       const completedAt = new Date().toISOString();
-      const message = formatPlaidSyncResultMessage(data.sync);
-      const errorDetails = getPlaidSyncResultErrorDetails(data.sync);
+      const message = formatPlaidSyncResultMessage(sync);
+      const errorDetails = getPlaidSyncResultErrorDetails(sync);
       setSyncAttempt({
         completedAt,
         errorDetails,
         message,
         startedAt,
-        status: data.sync.status
+        status: sync.status
       });
-      if (data.sync.failed > 0) {
+      if (sync.failed > 0) {
         setError(message);
       } else {
         setSuccessMessage(message);
@@ -388,12 +432,17 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
         method: "POST"
       }).then((response) => readJson<ExchangeResponse>(response));
 
+      const [connection] = asConnectionList([data.connection]);
+      if (!connection) {
+        throw new Error("Plaid connection returned an incomplete result. Refresh Settings and try again.");
+      }
+
       setConnections((current) => [
-        data.connection,
-        ...current.filter((connection) => connection.id !== data.connection.id)
+        connection,
+        ...current.filter((item) => item.id !== connection.id)
       ]);
       setSuccessMessage(
-        `${data.connection.institutionName} connected.${data.sync ? ` ${formatSyncItemMessage(data.sync)}` : ""}`
+        `${connection.institutionName} connected.${data.sync ? ` ${formatSyncItemMessage(data.sync)}` : ""}`
       );
       if (data.syncError) setError(data.syncError);
       setLinkToken(null);
@@ -495,7 +544,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
         method: "PATCH"
       }).then((response) => readJson<{ autoSyncEnabled: boolean; connections: PlaidConnectionSummary[] }>(response));
 
-      setConnections(data.connections);
+      setConnections(asConnectionList(data.connections));
       setSuccessMessage(`Daily auto-sync turned ${data.autoSyncEnabled ? "on" : "off"}.`);
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : "Unable to update auto-sync setting.");
@@ -525,7 +574,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
         readJson<DisconnectResponse>(response)
       );
 
-      setConnections(data.connections);
+      setConnections(asConnectionList(data.connections));
       setSuccessMessage(`${data.connection.institutionName} disconnected. Historical transactions were preserved.`);
       router.refresh();
       focusConnectButton();

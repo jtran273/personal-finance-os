@@ -52,6 +52,17 @@ test("Plaid server configuration errors use actionable safe copy", () => {
   );
 });
 
+test("generic Plaid request failures use retryable copy instead of a raw fallback label", () => {
+  assert.deepEqual(
+    getPlaidConnectionIssue(connection({ errorCode: "PLAID_REQUEST_FAILED", status: "error" })),
+    {
+      action: "retry",
+      detail: "Plaid did not return a specific item error for the last request. Retry sync; if it repeats, check safe server logs for the Plaid request id.",
+      title: "Plaid request failed"
+    }
+  );
+});
+
 test("Plaid token decryption errors ask for reconnect while preserving balance context", () => {
   assert.deepEqual(
     getPlaidConnectionIssue(connection({
@@ -178,6 +189,29 @@ test("Plaid sync result messages explain token decryption reconnects", () => {
   );
 });
 
+test("Plaid sync result messages explain generic request failures without provider details", () => {
+  const sync = {
+    accountsUpserted: 7,
+    enrichedTransactionsInserted: 2,
+    enrichedTransactionsUpdated: 0,
+    failed: 1,
+    items: [
+      { errorCode: "PLAID_REQUEST_FAILED", errorMessage: "Plaid sync failed. Request ID: request_123." }
+    ],
+    rawTransactionsUpserted: 2,
+    status: "partial" as const
+  };
+
+  assert.equal(
+    getPlaidSyncResultErrorDetails(sync),
+    "PLAID_REQUEST_FAILED: Plaid did not return a specific item error for this request. Retry sync; if it repeats, inspect safe server logs."
+  );
+  assert.equal(
+    formatPlaidSyncResultMessage(sync),
+    "Sync incomplete: 7 accounts, 2 raw transactions, 2 enriched transactions, 1 failures. PLAID_REQUEST_FAILED: Plaid did not return a specific item error for this request. Retry sync; if it repeats, inspect safe server logs."
+  );
+});
+
 test("Plaid sync result messages include skipped raw transaction counts and warnings", () => {
   const sync = {
     accountsUpserted: 2,
@@ -202,5 +236,19 @@ test("Plaid sync result messages include skipped raw transaction counts and warn
   assert.equal(
     formatPlaidSyncResultMessage(sync),
     "Sync complete: 2 accounts, 0 raw transactions, 3 skipped, 0 enriched transactions, 0 failures. PRODUCT_NOT_ENABLED: Plaid transactions are not available for this connection yet."
+  );
+});
+
+test("Plaid sync result messages tolerate incomplete failed payloads", () => {
+  const sync = {
+    failed: null,
+    items: null,
+    status: "failed" as const
+  };
+
+  assert.equal(getPlaidSyncResultErrorDetails(sync), null);
+  assert.equal(
+    formatPlaidSyncResultMessage(sync),
+    "Sync incomplete: 0 accounts, 0 raw transactions, 0 enriched transactions, 0 failures."
   );
 });

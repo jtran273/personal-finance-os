@@ -34,14 +34,14 @@ export interface PlaidSyncResultItemInput {
 }
 
 export interface PlaidSyncResultInput {
-  accountsUpserted: number;
-  enrichedTransactionsInserted: number;
-  enrichedTransactionsUpdated: number;
-  failed: number;
-  items: readonly PlaidSyncResultItemInput[];
-  rawTransactionsSkipped?: number;
-  rawTransactionsUpserted: number;
-  status: "succeeded" | "partial" | "failed";
+  accountsUpserted?: number | null;
+  enrichedTransactionsInserted?: number | null;
+  enrichedTransactionsUpdated?: number | null;
+  failed?: number | null;
+  items?: readonly PlaidSyncResultItemInput[] | null;
+  rawTransactionsSkipped?: number | null;
+  rawTransactionsUpserted?: number | null;
+  status?: "succeeded" | "partial" | "failed" | null;
 }
 
 const REPAIR_ERROR_CODES = new Set([
@@ -69,6 +69,7 @@ const SERVER_CONFIGURATION_ERROR_CODES = new Set([
 ]);
 
 const TOKEN_DECRYPTION_ERROR_CODE = "PLAID_TOKEN_DECRYPTION_ERROR";
+const GENERIC_PLAID_REQUEST_ERROR_CODE = "PLAID_REQUEST_FAILED";
 
 function normalizedCode(code: string | null) {
   return code?.trim().toUpperCase() ?? null;
@@ -83,6 +84,14 @@ function validTimestamp(value: string | null) {
   if (!value) return null;
   const time = Date.parse(value);
   return Number.isNaN(time) ? null : { time, value };
+}
+
+function safeCount(value: number | null | undefined) {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function safeSyncItems(sync: PlaidSyncResultInput) {
+  return Array.isArray(sync.items) ? sync.items : [];
 }
 
 export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): PlaidConnectionIssue | null {
@@ -134,6 +143,14 @@ export function getPlaidConnectionIssue(input: PlaidConnectionStatusInput): Plai
       action: "retry",
       detail: "Plaid server configuration needs attention before sync can run. Check production environment variables and retry sync.",
       title: "Server configuration issue"
+    };
+  }
+
+  if (code === GENERIC_PLAID_REQUEST_ERROR_CODE) {
+    return {
+      action: "retry",
+      detail: "Plaid did not return a specific item error for the last request. Retry sync; if it repeats, check safe server logs for the Plaid request id.",
+      title: "Plaid request failed"
     };
   }
 
@@ -197,11 +214,15 @@ export function buildPlaidConnectionsStatusSummary(
 }
 
 export function getPlaidSyncResultErrorDetails(sync: PlaidSyncResultInput): string | null {
-  const details = sync.items
+  const details = safeSyncItems(sync)
     .filter((item) => item.errorCode || item.errorMessage || item.warningCode || item.warningMessage)
     .map((item) => {
       if (normalizedCode(item.errorCode ?? null) === TOKEN_DECRYPTION_ERROR_CODE) {
         return "PLAID_TOKEN_DECRYPTION_ERROR: Reconnect the institution. Tally can still show saved balances, but transaction sync cannot run because the bank connection token is unreadable.";
+      }
+
+      if (normalizedCode(item.errorCode ?? null) === GENERIC_PLAID_REQUEST_ERROR_CODE) {
+        return "PLAID_REQUEST_FAILED: Plaid did not return a specific item error for this request. Retry sync; if it repeats, inspect safe server logs.";
       }
 
       return [
@@ -214,13 +235,14 @@ export function getPlaidSyncResultErrorDetails(sync: PlaidSyncResultInput): stri
 }
 
 export function formatPlaidSyncResultMessage(sync: PlaidSyncResultInput) {
-  const enrichedTransactions = sync.enrichedTransactionsInserted + sync.enrichedTransactionsUpdated;
+  const enrichedTransactions = safeCount(sync.enrichedTransactionsInserted) + safeCount(sync.enrichedTransactionsUpdated);
   const resultLabel = sync.status === "succeeded" ? "Sync complete" : "Sync incomplete";
   const errorDetails = getPlaidSyncResultErrorDetails(sync);
-  const skipped = sync.rawTransactionsSkipped && sync.rawTransactionsSkipped > 0
-    ? `, ${sync.rawTransactionsSkipped} skipped`
+  const rawTransactionsSkipped = safeCount(sync.rawTransactionsSkipped);
+  const skipped = rawTransactionsSkipped > 0
+    ? `, ${rawTransactionsSkipped} skipped`
     : "";
-  const summary = `${sync.accountsUpserted} accounts, ${sync.rawTransactionsUpserted} raw transactions${skipped}, ${enrichedTransactions} enriched transactions, ${sync.failed} failures.`;
+  const summary = `${safeCount(sync.accountsUpserted)} accounts, ${safeCount(sync.rawTransactionsUpserted)} raw transactions${skipped}, ${enrichedTransactions} enriched transactions, ${safeCount(sync.failed)} failures.`;
 
   return errorDetails ? `${resultLabel}: ${summary} ${errorDetails}` : `${resultLabel}: ${summary}`;
 }

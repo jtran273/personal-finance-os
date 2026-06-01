@@ -2107,6 +2107,7 @@ function PayoffPlanPanel({
     plan.aggregateUtilization !== null ? `${plan.aggregateUtilization.toFixed(1)}%` : "—";
   const projectedLabel =
     plan.projectedUtilization !== null ? `${plan.projectedUtilization.toFixed(1)}%` : "—";
+  const anyActualClose = plan.cards.some((c) => c.statementCloseIsActual);
 
   return (
     <section aria-label="Payoff plan" className={styles.liabilityPanel}>
@@ -2194,6 +2195,9 @@ function PayoffPlanPanel({
         21 days before the due date) — that&rsquo;s the number credit bureaus see. Lower is always
         better; under 30% per card and under 10% overall is the well-established target, with no
         hard cliff. Expect score changes 30–45 days after the payment lands.
+        {!anyActualClose
+          ? " Dates above are estimated from your payment history — reconnect your cards to pull exact statement-close dates from your issuer."
+          : null}
       </p>
     </section>
   );

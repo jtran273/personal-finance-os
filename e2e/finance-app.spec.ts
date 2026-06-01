@@ -608,9 +608,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const categoryViewControls = page.getByLabel("Category spending view");
   const categoryMonthView = categoryViewControls.getByRole("button", { exact: true, name: "Month" });
   const categoryTrendView = categoryViewControls.getByRole("button", { exact: true, name: "Trend" });
-  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
-  await expect(categoryTrendView).toHaveAttribute("aria-pressed", "false");
   await categoryTrendView.click();
+  await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
+  await expect(categoryMonthView).toHaveAttribute("aria-pressed", "false");
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
   const categoryRange = page.getByLabel("Category trend range");
   await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");

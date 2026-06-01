@@ -534,7 +534,7 @@ test("Tally surfaces respect reduced motion preferences", async ({ baseURL, cont
   }
 });
 
-test("dashboard keeps cashflow reporting off the main surface", async ({ baseURL, context, page }) => {
+test("dashboard keeps the old cashflow runway off the main surface", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
@@ -549,32 +549,18 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
-  let chart = page.locator("svg[aria-label='Spendable balance trend']");
+  let chart = page.locator("svg[aria-label='Net worth balance trend']");
   await expect(chart).toBeVisible();
-  const spendableView = page.getByRole("button", { exact: true, name: "Spendable balance view" });
-  const balanceRangeControls = page.getByLabel("Balance trend range");
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
-
-  const liquidView = page.getByRole("button", { exact: true, name: "Liquid assets balance view" });
-  await liquidView.click();
-  await expect(liquidView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Liquid assets balance trend']")).toBeVisible();
-
-  const debtView = page.getByRole("button", { exact: true, name: "Debt balance view" });
-  await debtView.click();
-  await expect(debtView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Debt balance trend']")).toBeVisible();
-
-  await spendableView.click();
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Spendable balance trend']")).toBeVisible();
-
   const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
-  await netWorthView.click();
+  const incomeView = page.getByRole("button", { exact: true, name: "Income / liquid assets balance view" });
+  const cashFlowView = page.getByRole("button", { exact: true, name: "Cash flow balance view" });
+  const balanceRangeControls = page.getByLabel("Balance trend range");
   await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
-  chart = page.locator("svg[aria-label='Net worth balance trend']");
-  await expect(chart).toBeVisible();
+  await expect(incomeView).toBeVisible();
+  await expect(cashFlowView).toBeVisible();
+  await expect(page.getByRole("button", { exact: true, name: "Debt balance view" })).toHaveCount(0);
+  await expect(page.getByRole("button", { exact: true, name: "Spendable balance view" })).toHaveCount(0);
+  await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
 
   const oneYear = balanceRangeControls.getByRole("button", { name: "1Y" });
   await oneYear.click();
@@ -590,20 +576,17 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
   await expect(page.getByText("Selected period", { exact: true })).toBeVisible();
 
-  await spendableView.click();
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await cashFlowView.click();
+  await expect(cashFlowView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  await expect(page.getByLabel("Spendable comparison")).toHaveCount(0);
   const selectedTransactionsHref = await page
     .getByLabel("Selected balance transactions")
     .getByRole("link", { name: "Open transactions" })
     .getAttribute("href");
   expect(selectedTransactionsHref).toMatch(/month=\d{4}-\d{2}/);
-
-  await debtView.click();
-  await expect(debtView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Debt balance trend']")).toBeVisible();
 
   const categoryViewControls = page.getByLabel("Category spending view");
   const categoryMonthView = categoryViewControls.getByRole("button", { exact: true, name: "Month" });
@@ -646,9 +629,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
     expect(href).toContain("exclude_transfers=1");
   }
 
-  await liquidView.click();
-  await expect(liquidView).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("svg[aria-label='Liquid assets balance trend']")).toBeVisible();
+  await incomeView.click();
+  await expect(incomeView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Income / liquid assets balance trend']")).toBeVisible();
 
   const incomePanel = page.getByLabel("Income by category");
   await expect(incomePanel).toBeVisible();
@@ -662,9 +645,9 @@ test("dashboard trend range controls update the change-over-time view", async ({
     expect(href).toContain("direction=income");
   }
 
-  await spendableView.click();
-  await expect(spendableView).toHaveAttribute("aria-pressed", "true");
-  chart = page.locator("svg[aria-label='Spendable balance trend']");
+  await cashFlowView.click();
+  await expect(cashFlowView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
 
   const trendPoints = chart.locator("g[role='button']");
@@ -699,7 +682,7 @@ test("dashboard keeps the balance trend readable on mobile", async ({ baseURL, c
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/dashboard");
 
-  const chart = page.locator("svg[aria-label='Spendable balance trend']");
+  const chart = page.locator("svg[aria-label='Net worth balance trend']");
   await expect(chart).toBeHidden();
 
   await expect(page.getByLabel("Mobile balance trend summary")).toBeVisible();

@@ -2,21 +2,17 @@ import { DashboardView } from "@/components/finance/dashboard/dashboard-view";
 import {
   listAccounts,
   listBalanceSnapshots,
-  listRecurringExpenses,
   listTransactions,
   type AccountRecord,
   type BalanceSnapshotRecord,
-  type RecurringExpenseRecord,
   type TransactionRecord
 } from "@/lib/db";
 import { getFinanceServerContext } from "@/lib/demo/server";
 import {
   buildBalanceTrend,
   calculateAccountTotals,
-  summarizeSync,
-  type BalanceTrendScope
+  summarizeSync
 } from "@/lib/finance/balances";
-import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { applyManualInvestmentValuations } from "@/lib/investments/manual-valuations";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +25,6 @@ export default async function DashboardPage() {
   let accounts: AccountRecord[] = [];
   let snapshots: BalanceSnapshotRecord[] = [];
   let trendTransactions: TransactionRecord[] = [];
-  let recurringExpenses: RecurringExpenseRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
   let isDemo = false;
@@ -48,14 +43,12 @@ export default async function DashboardPage() {
 
       [
         snapshots,
-        trendTransactions,
-        recurringExpenses
+        trendTransactions
       ] = await Promise.all([
         accountIds.length > 0
           ? listBalanceSnapshots(context.client, context.userId, { accountIds, limit: 5000 })
           : Promise.resolve([]),
-        listTransactions(context.client, context.userId, { includeRawContext: false, limit: 5000 }),
-        listRecurringExpenses(context.client, context.userId)
+        listTransactions(context.client, context.userId, { includeRawContext: false, limit: 5000 })
       ]);
       accounts = await applyManualInvestmentValuations(accounts);
     } catch (loadError) {
@@ -85,18 +78,8 @@ export default async function DashboardPage() {
       ...trendOptions,
       scope: "cashMinusLiabilities"
     }),
-    liabilities: buildBalanceTrend(accounts, snapshots, {
-      ...trendOptions,
-      scope: "liabilities"
-    }),
     netWorth: trend
-  } satisfies Record<BalanceTrendScope, typeof trend>;
-  const liabilitiesDue = buildLiabilitiesDueSummary({
-    accounts,
-    asOfDate,
-    cashAvailable: totals.cash,
-    transactions: trendTransactions
-  });
+  } satisfies Record<"cash" | "cashMinusLiabilities" | "netWorth", typeof trend>;
   const balanceTransactions = trendTransactions.map((transaction) => ({
     accountId: transaction.accountId,
     accountName: transaction.accountName,
@@ -129,8 +112,6 @@ export default async function DashboardPage() {
       isConfigured={isConfigured}
       isDemo={isDemo}
       isSignedIn={isSignedIn}
-      liabilitiesDue={liabilitiesDue}
-      recurringExpenses={recurringExpenses}
       snapshotCount={snapshots.length}
       syncSummary={summarizeSync(plaidSyncAccounts)}
       totals={totals}

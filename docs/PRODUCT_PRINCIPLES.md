@@ -7,6 +7,7 @@ Tally should stay low-cognitive-load and proactive. James prefers fewer visible 
 ## Direction
 
 - Prefer one clear next action over a dashboard of diagnostics.
+- Keep the dashboard centered on Net worth, Income / liquid assets, and Cash flow; avoid reintroducing separate debt/spendable panels unless real use proves they are needed.
 - Keep advanced/debug views available, but do not make them prominent in normal navigation.
 - Preserve backend auditability, data integrity, and deterministic calculations when they are cheap and useful.
 - Hide or collapse visible complexity unless it directly helps James make a finance decision now.

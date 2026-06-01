@@ -2104,39 +2104,35 @@ function PayoffPlanPanel({
   if (plan.cards.length === 0) return null;
 
   const aggregateLabel =
-    plan.aggregateUtilization !== null ? `${plan.aggregateUtilization.toFixed(1)}%` : "—";
+    plan.aggregateUtilization !== null ? `${plan.aggregateUtilization.toFixed(0)}%` : "—";
   const projectedLabel =
-    plan.projectedUtilization !== null ? `${plan.projectedUtilization.toFixed(1)}%` : "—";
-  const anyActualClose = plan.cards.some((c) => c.statementCloseIsActual);
+    plan.projectedUtilization !== null ? `${plan.projectedUtilization.toFixed(0)}%` : "—";
 
   return (
     <section aria-label="Payoff plan" className={styles.liabilityPanel}>
       <div className={styles.liabilityPanelHead}>
         <div>
-          <span className={styles.eyebrow}>Payoff plan</span>
+          <span className={styles.eyebrow}>Credit card usage</span>
           <h3 className={`${styles.liabilityHeadline} ${payoffTierClass(plan.aggregateTier)}`}>
-            {aggregateLabel} used
+            {aggregateLabel}
           </h3>
           <p className={styles.liabilityCoverage}>
-            Across {plan.cards.length} card{plan.cards.length === 1 ? "" : "s"} · {tierLabel(plan.aggregateTier)}.
             {plan.cashApplied > 0
-              ? ` Applying ${formatMoney(plan.cashApplied)} of your cash drops it to ${projectedLabel}.`
-              : " No cash available to apply."}
+              ? `Following the plan below drops you to ${projectedLabel}. Under 10% looks best to credit bureaus.`
+              : "Under 10% looks best to credit bureaus."}
           </p>
         </div>
       </div>
 
-      {plan.topPick ? (
+      {plan.topPick && plan.topPick.actionText ? (
         <div className={styles.payoffCallout}>
           <div>
-            <strong>Best move today</strong>
+            <strong>Do this first</strong>
             <span>
               {plan.topPick.name}
               {plan.topPick.mask ? ` · ${plan.topPick.mask}` : ""}
             </span>
-            {plan.topPick.actionText ? (
-              <span className={styles.payoffActionText}>{plan.topPick.actionText}</span>
-            ) : null}
+            <span className={styles.payoffActionText}>{plan.topPick.actionText}</span>
           </div>
           <div className={styles.payoffCalloutAmount}>
             <strong>{formatMoney(plan.topPick.suggestedPayment)}</strong>
@@ -2151,6 +2147,7 @@ function PayoffPlanPanel({
         {plan.cards.map((card: PayoffCardPlan) => {
           const utilLabel =
             card.utilizationPercent !== null ? `${card.utilizationPercent.toFixed(0)}% used` : "No limit";
+          const isTopPick = plan.topPick?.accountId === card.accountId;
           return (
             <div className={styles.payoffRow} key={card.accountId}>
               <div className={styles.payoffRowMain}>
@@ -2159,9 +2156,7 @@ function PayoffPlanPanel({
                     {card.name}
                     {card.mask ? ` · ${card.mask}` : ""}
                   </strong>
-                  <span className={payoffTierClass(card.tier)}>
-                    {utilLabel} · {tierLabel(card.tier)}
-                  </span>
+                  <span className={payoffTierClass(card.tier)}>{utilLabel}</span>
                 </div>
                 <div className={styles.payoffRowAmount}>
                   <strong>{formatMoney(card.balance)}</strong>
@@ -2182,7 +2177,7 @@ function PayoffPlanPanel({
                   />
                 </div>
               ) : null}
-              {card.actionText ? (
+              {!isTopPick && card.actionText ? (
                 <p className={styles.payoffActionText}>{card.actionText}</p>
               ) : null}
             </div>
@@ -2191,13 +2186,8 @@ function PayoffPlanPanel({
       </div>
 
       <p className={styles.payoffFootnote}>
-        Issuers report the balance on each card&rsquo;s <strong>statement closing date</strong> (about
-        21 days before the due date) — that&rsquo;s the number credit bureaus see. Lower is always
-        better; under 30% per card and under 10% overall is the well-established target, with no
-        hard cliff. Expect score changes 30–45 days after the payment lands.
-        {!anyActualClose
-          ? " Dates above are estimated from your payment history — reconnect your cards to pull exact statement-close dates from your issuer."
-          : null}
+        Pay before the date shown so the lower balance is what your card reports to credit bureaus.
+        Scores update 30–45 days after.
       </p>
     </section>
   );

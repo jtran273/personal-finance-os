@@ -63,13 +63,13 @@ export function tierForUtilization(util: number | null): UtilizationTier {
 export function tierLabel(tier: UtilizationTier): string {
   switch (tier) {
     case "optimal":
-      return "Optimal (<10%)";
+      return "Looks great";
     case "ok":
-      return "OK (<30%)";
+      return "Looks fine";
     case "high":
-      return "High (30–50%)";
+      return "Pay this down";
     case "critical":
-      return "Critical (50%+)";
+      return "Pay this down now";
     default:
       return "No limit reported";
   }
@@ -113,28 +113,22 @@ function buildActionText(
   fallbackDeadlineIso: string | null
 ): string | null {
   if (card.suggestedPayment <= 0) {
-    if (card.tier === "optimal") return "Already in the optimal tier — no action needed.";
+    if (card.tier === "optimal") return "No action needed.";
     return null;
   }
   const deadlineIso = card.statementCloseDate ?? fallbackDeadlineIso;
-  const deadlineLabel = deadlineIso ? formatShortDate(deadlineIso) : "your next statement close";
-  const daysOut = card.daysUntilStatementClose;
-  const closeLabel = card.statementCloseIsActual ? "statement closes" : "est. statement close";
-  const deadlineSuffix =
-    daysOut !== null && deadlineIso
-      ? daysOut <= 0
-        ? `before your next statement closes`
-        : `by ${deadlineLabel} (in ${daysOut} day${daysOut === 1 ? "" : "s"}, ${closeLabel})`
-      : `by ${deadlineLabel}`;
-
+  const deadlineLabel = deadlineIso ? formatShortDate(deadlineIso) : null;
   const from = card.utilizationPercent;
   const to = card.projectedUtilizationPercent;
-  const fromTo =
+  const dropClause =
     from !== null && to !== null
-      ? ` — reported utilization drops from ${from.toFixed(0)}% to ${to.toFixed(0)}%`
+      ? ` Drops usage from ${from.toFixed(0)}% to ${to.toFixed(0)}%.`
       : "";
 
-  return `Pay ${formatMoney(card.suggestedPayment)} ${deadlineSuffix}${fromTo}.`;
+  if (deadlineLabel) {
+    return `Pay ${formatMoney(card.suggestedPayment)} by ${deadlineLabel}.${dropClause}`;
+  }
+  return `Pay ${formatMoney(card.suggestedPayment)}.${dropClause}`;
 }
 
 export function buildPayoffPlan({
@@ -159,17 +153,18 @@ export function buildPayoffPlan({
 
     // Prefer the next statement close inferred from Plaid's last statement
     // issue date (cycles repeat ~monthly). Fall back to the due date − 21d.
+    // In both cases, roll forward by 30-day cycles until the result is in the
+    // future so we never display a past deadline.
     let statementCloseDate: string | null = null;
     let statementCloseIsActual = false;
     if (row.lastStatementIssueDate) {
-      let next = addDays(row.lastStatementIssueDate, 30);
-      while (dayDifference(today, next) < 0) {
-        next = addDays(next, 30);
-      }
-      statementCloseDate = next;
+      statementCloseDate = addDays(row.lastStatementIssueDate, 30);
       statementCloseIsActual = true;
     } else if (row.estimatedDueDate) {
       statementCloseDate = addDays(row.estimatedDueDate, -GRACE_PERIOD_DAYS);
+    }
+    while (statementCloseDate && dayDifference(today, statementCloseDate) < 0) {
+      statementCloseDate = addDays(statementCloseDate, 30);
     }
     const daysUntilStatementClose = statementCloseDate
       ? dayDifference(today, statementCloseDate)

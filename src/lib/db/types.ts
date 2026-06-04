@@ -24,6 +24,12 @@ export type ReviewReason =
   | "unclear-transfer"
   | "recurring-candidate";
 export type ReviewStatus = "open" | "resolved" | "dismissed";
+export type ReviewResolutionKind =
+  | "accepted_ai"
+  | "accepted_manual"
+  | "edited"
+  | "dismissed"
+  | "auto_resolved";
 export type RecurringCadence = "weekly" | "biweekly" | "monthly" | "quarterly" | "annual";
 export type RecurringStatus = "active" | "pending" | "paused" | "dismissed";
 export type ReimbursementStatus = "expected" | "requested" | "received" | "written-off";
@@ -45,6 +51,17 @@ export type AgentTargetKind =
   | "merchant_rule"
   | "recurring_expense"
   | "openclaw_briefing";
+export type AnomalyAlertSeverity = "info" | "warning" | "critical";
+export type AnomalyAlertStatus = "pending" | "dismissed" | "resolved";
+export type AnomalyAlertReasonCode =
+  | "duplicate_charge"
+  | "subscription_increase"
+  | "unusual_merchant"
+  | "large_transaction"
+  | "category_spike"
+  | "overdue_reimbursement"
+  | "high_card_balance"
+  | "stale_sync";
 
 type DbInsert<Row extends { user_id: string }> = Partial<Row> & Pick<Row, "user_id">;
 type DbUpdate<Row> = Partial<Omit<Row, "id" | "user_id" | "created_at" | "first_seen_at">>;
@@ -148,6 +165,7 @@ export interface PlaidSyncRunRow {
   enriched_transactions_inserted: number;
   enriched_transactions_updated: number;
   transactions_removed: number;
+  pending_transactions_replaced: number;
   safe_error_code: string | null;
   safe_error_message: string | null;
   created_at: string;
@@ -169,6 +187,7 @@ export interface PlaidSyncRunItemRow {
   enriched_transactions_inserted: number;
   enriched_transactions_updated: number;
   transactions_removed: number;
+  pending_transactions_replaced: number;
   safe_error_code: string | null;
   safe_error_message: string | null;
   last_successful_sync_at: string | null;
@@ -276,6 +295,7 @@ export interface ReviewItemRow {
   confidence: number | null;
   resolved_at: string | null;
   resolution_note: string | null;
+  resolution_kind?: ReviewResolutionKind | null;
   created_at: string;
   updated_at: string;
 }
@@ -371,6 +391,25 @@ export interface AgentProposalRow {
   updated_at: string;
 }
 
+export interface AnomalyAlertRow {
+  id: string;
+  user_id: string;
+  reason_code: AnomalyAlertReasonCode;
+  severity: AnomalyAlertSeverity;
+  status: AnomalyAlertStatus;
+  dedupe_key: string;
+  title: string;
+  body: string;
+  evidence: Json;
+  detected_at: string;
+  first_seen_at: string;
+  last_seen_at: string;
+  dismissed_at: string | null;
+  resolved_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AuditEventRow {
   id: string;
   user_id: string;
@@ -404,6 +443,7 @@ export type Database = {
       reimbursement_records: TableDefinition<ReimbursementRecordRow>;
       insights: TableDefinition<InsightRow>;
       agent_proposals: TableDefinition<AgentProposalRow>;
+      anomaly_alerts: TableDefinition<AnomalyAlertRow>;
       audit_events: TableDefinition<AuditEventRow>;
     };
     Views: Record<never, never>;
@@ -417,6 +457,7 @@ export type Database = {
       transaction_intent: TransactionIntent;
       review_reason: ReviewReason;
       review_status: ReviewStatus;
+      review_resolution_kind: ReviewResolutionKind;
       recurring_cadence: RecurringCadence;
       recurring_status: RecurringStatus;
       reimbursement_status: ReimbursementStatus;
@@ -424,6 +465,9 @@ export type Database = {
       agent_proposal_status: AgentProposalStatus;
       agent_proposal_type: AgentProposalType;
       agent_target_kind: AgentTargetKind;
+      anomaly_alert_reason_code: AnomalyAlertReasonCode;
+      anomaly_alert_severity: AnomalyAlertSeverity;
+      anomaly_alert_status: AnomalyAlertStatus;
     };
     CompositeTypes: Record<never, never>;
   };
@@ -516,6 +560,7 @@ export interface ReviewItemRecord {
   confidence: number | null;
   resolvedAt: string | null;
   resolutionNote: string | null;
+  resolutionKind?: ReviewResolutionKind | null;
   createdAt: string;
 }
 
@@ -574,6 +619,25 @@ export interface AgentProposalRecord {
   acceptedAt: string | null;
   dismissedAt: string | null;
   answeredAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnomalyAlertRecord {
+  id: string;
+  userId: string;
+  reasonCode: AnomalyAlertReasonCode;
+  severity: AnomalyAlertSeverity;
+  status: AnomalyAlertStatus;
+  dedupeKey: string;
+  title: string;
+  body: string;
+  evidence: Json;
+  detectedAt: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  dismissedAt: string | null;
+  resolvedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

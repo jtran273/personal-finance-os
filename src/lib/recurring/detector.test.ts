@@ -308,6 +308,7 @@ function assertRecurringPayloadFixtures(
   if (
     confirmPayload.reviewResolutions.length !== 1 ||
     confirmPayload.reviewResolutions[0]?.reviewItemId !== "review-substack" ||
+    confirmPayload.reviewResolutions[0]?.resolutionKind !== "accepted_manual" ||
     confirmPayload.reviewResolutions[0]?.status !== "resolved"
   ) {
     throw new Error("Expected confirm recurring payload to resolve only open recurring review items.");
@@ -327,6 +328,7 @@ function assertRecurringPayloadFixtures(
   if (
     dismissPayload.reviewResolutions.length !== 1 ||
     dismissPayload.reviewResolutions[0]?.reviewItemId !== "review-substack" ||
+    dismissPayload.reviewResolutions[0]?.resolutionKind !== "dismissed" ||
     dismissPayload.reviewResolutions[0]?.status !== "dismissed"
   ) {
     throw new Error("Expected dismiss recurring payload to dismiss only open recurring review items.");

@@ -5,6 +5,7 @@ import type { OpenClawClarificationQuestion, OpenClawSignalsResponse } from "./t
 export type OpenClawOutboxMessageKind =
   | "budget_briefing"
   | "anomaly_alert"
+  | "credit_utilization_nudge"
   | "reimbursement_alert"
   | "reimbursement_clarification"
   | "review_queue_alert";
@@ -179,6 +180,20 @@ function anomalyAlertMessage(packet: OpenClawAnomalyPacket): OpenClawOutboxMessa
   };
 }
 
+function creditNudgeMessage(
+  packet: OpenClawSignalsResponse["creditNudgePackets"][number]
+): OpenClawOutboxMessage {
+  return {
+    id: `openclaw-outbox:${packet.id}`,
+    body: compact(packet.body, MAX_MESSAGE_LENGTH),
+    createdAt: packet.createdAt,
+    kind: "credit_utilization_nudge",
+    priority: "high",
+    replyAction: null,
+    target: "openclaw"
+  };
+}
+
 export function buildOpenClawOutboxResponse(
   signals: OpenClawSignalsResponse,
   options: {
@@ -193,6 +208,7 @@ export function buildOpenClawOutboxResponse(
   const minPriority = options.minPriority ?? "normal";
   const messages = [
     ...(options.anomalyPackets ?? []).map(anomalyAlertMessage),
+    ...signals.creditNudgePackets.slice(0, 1).map(creditNudgeMessage),
     ...signals.openClarificationQuestions.map((question) => reimbursementMessage(question, signals.generatedAt)),
     reimbursementAlert(signals),
     reviewQueueAlert(signals),

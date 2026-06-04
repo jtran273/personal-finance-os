@@ -87,3 +87,32 @@ test("OpenClaw outbox creates specific high-priority review and reimbursement al
   assert.match(outbox.messages[1]?.body ?? "", /2 open items/);
   assertAssistantContextSafe(outbox);
 });
+
+test("OpenClaw outbox emits a sparse high-priority credit utilization nudge", () => {
+  const signals = structuredClone(openClawSignalsFixture) as OpenClawSignalsResponse;
+  signals.openClarificationQuestions = [];
+  signals.creditNudgePackets = [{
+    amount: 100,
+    body: "Tally credit: pay $100 by Jun 22 to keep Chase card under 30% utilization before it may report. This uses a cash-safe estimate and Tally will not initiate payment.",
+    cardLabel: "Chase card",
+    createdAt: signals.generatedAt,
+    deadline: "2026-06-22",
+    id: "openclaw-credit-nudge:v1:stable",
+    reason: "cash_safe_under_30",
+    sourceConfidence: "statement_cycle",
+    targetUtilizationPercent: 30,
+    utilizationPercent: 35
+  }];
+
+  const outbox = buildOpenClawOutboxResponse(signals, {
+    includeBudgetBriefing: false,
+    minPriority: "high"
+  });
+
+  assert.equal(outbox.messages.length, 1);
+  assert.equal(outbox.messages[0]?.id, "openclaw-outbox:openclaw-credit-nudge:v1:stable");
+  assert.equal(outbox.messages[0]?.kind, "credit_utilization_nudge");
+  assert.equal(outbox.messages[0]?.priority, "high");
+  assert.match(outbox.messages[0]?.body ?? "", /under 30% utilization/);
+  assertAssistantContextSafe(outbox);
+});

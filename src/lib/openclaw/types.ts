@@ -1,5 +1,6 @@
 import type { WeeklyPlanningContext } from "@/lib/agents";
 import type { UpcomingCalendarContext } from "@/lib/calendar/context";
+import type { OpenClawCreditNudgePacket } from "./credit-nudges";
 import type {
   AgentProposalStatus,
   AgentProposalType,
@@ -7,7 +8,7 @@ import type {
   Json
 } from "@/lib/db";
 
-export const OPENCLAW_SIGNAL_CONTRACT_VERSION = "2026-05-13" as const;
+export const OPENCLAW_SIGNAL_CONTRACT_VERSION = "2026-06-04" as const;
 
 export interface OpenClawSignalSafety {
   excludedFields: readonly string[];
@@ -51,6 +52,7 @@ export interface OpenClawSignalsResponse {
   object: "ledger.openclaw.signals";
   calendarContext: UpcomingCalendarContext;
   contractVersion: typeof OPENCLAW_SIGNAL_CONTRACT_VERSION;
+  creditNudgePackets: OpenClawCreditNudgePacket[];
   generatedAt: string;
   nextCursor: string;
   openClarificationQuestions: OpenClawClarificationQuestion[];

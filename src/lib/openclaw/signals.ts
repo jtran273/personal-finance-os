@@ -19,6 +19,8 @@ import {
   type OpenClawProposalSignal,
   type OpenClawSignalsResponse
 } from "./types";
+import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
+import { buildOpenClawCreditNudgePackets } from "./credit-nudges";
 
 const DAY_MS = 86_400_000;
 const DEFAULT_LOOKBACK_HOURS = 24;
@@ -42,6 +44,7 @@ export interface OpenClawSignalsLoadOptions {
 
 export interface OpenClawSignalsBuildInput {
   calendarContext?: OpenClawSignalsResponse["calendarContext"];
+  creditNudgePackets?: OpenClawSignalsResponse["creditNudgePackets"];
   generatedAt: string;
   openClarificationProposals: readonly AgentProposalRecord[];
   pendingProposals: readonly AgentProposalRecord[];
@@ -148,6 +151,7 @@ export function selectOpenClarificationProposals(
 
 export function buildOpenClawSignalsResponse({
   calendarContext,
+  creditNudgePackets = [],
   generatedAt,
   openClarificationProposals,
   pendingProposals,
@@ -161,6 +165,7 @@ export function buildOpenClawSignalsResponse({
       now: new Date(`${weeklyPlanningContext.asOfDate}T12:00:00.000Z`)
     }),
     contractVersion: OPENCLAW_SIGNAL_CONTRACT_VERSION,
+    creditNudgePackets: [...creditNudgePackets],
     generatedAt,
     nextCursor: generatedAt,
     openClarificationQuestions: openClarificationProposals
@@ -227,19 +232,34 @@ export async function loadOpenClawSignals(
     listRecurringExpenses(client, userId)
   ]);
 
+  const weeklyPlanningContext = buildWeeklyPlanningContext({
+    accounts,
+    generatedAt,
+    now,
+    recurringExpenses,
+    reviewItems,
+    transactions
+  });
+  const projectedCash = weeklyPlanningContext.cashflow.upcoming.projectedCashBalance;
+  const startingCash = weeklyPlanningContext.cashflow.upcoming.startingCashBalance;
+  const liabilities = buildLiabilitiesDueSummary({
+    accounts,
+    asOfDate,
+    cashAvailable: Math.max(0, projectedCash ?? startingCash ?? 0),
+    transactions
+  });
+
   return buildOpenClawSignalsResponse({
     generatedAt,
     calendarContext,
+    creditNudgePackets: buildOpenClawCreditNudgePackets({
+      generatedAt,
+      liabilities,
+      packetLimit: 1
+    }),
     openClarificationProposals: selectOpenClarificationProposals(openClarificationProposals, openQuestionLimit),
     pendingProposals,
     since,
-    weeklyPlanningContext: buildWeeklyPlanningContext({
-      accounts,
-      generatedAt,
-      now,
-      recurringExpenses,
-      reviewItems,
-      transactions
-    })
+    weeklyPlanningContext
   });
 }

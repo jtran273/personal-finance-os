@@ -243,7 +243,8 @@ function assertSpendingFixtures(): true {
       categoryId: "category-shopping",
       date: "2026-06-03",
       id: "tx-canva-credit",
-      merchant: "Canva refund"
+      merchant: "Canva",
+      plaidName: "Canva refund"
     }),
     transaction({
       amount: -12,

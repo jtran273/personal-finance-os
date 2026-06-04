@@ -772,7 +772,7 @@ export function transactionMatchesSearch(transaction: TransactionRecord, search:
 async function hydrateTransactions(
   client: FinanceSupabaseClient,
   userId: string,
-  enrichedRows: EnrichedTransactionRow[],
+  enrichedRows: readonly EnrichedTransactionRow[],
   options: { includeRawContext?: boolean } = {}
 ): Promise<TransactionRecord[]> {
   if (enrichedRows.length === 0) return [];
@@ -920,7 +920,7 @@ async function loadTransactionRowsWithRefundReversalContext(
     contextRows.forEach((row) => rowsById.set(row.id, row));
   }
 
-  return [...rowsById.values()];
+  return rowsById.size === rows.length ? rows : [...rowsById.values()];
 }
 
 export async function listAccounts(client: FinanceSupabaseClient, userId: string): Promise<AccountRecord[]> {

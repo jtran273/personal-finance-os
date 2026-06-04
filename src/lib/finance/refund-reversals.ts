@@ -29,6 +29,9 @@ export interface RefundReversalCandidate {
   merchant?: string | null;
   merchant_name?: string | null;
   merchantName?: string | null;
+  name?: string | null;
+  plaid_name?: string | null;
+  plaidName?: string | null;
 }
 
 function roundCents(value: number) {
@@ -48,12 +51,19 @@ function merchantName(candidate: RefundReversalCandidate) {
   return candidate.merchant ?? candidate.merchantName ?? candidate.merchant_name ?? "";
 }
 
+function statementText(candidate: RefundReversalCandidate) {
+  return [
+    merchantName(candidate),
+    candidate.plaidName ?? candidate.plaid_name ?? candidate.name ?? ""
+  ].filter(Boolean).join(" ");
+}
+
 function hasReversalSignal(candidate: RefundReversalCandidate) {
-  return REVERSAL_SIGNAL_PATTERN.test(merchantName(candidate));
+  return REVERSAL_SIGNAL_PATTERN.test(statementText(candidate));
 }
 
 function hasPeerToPeerMerchant(candidate: RefundReversalCandidate) {
-  return PEER_TO_PEER_PATTERN.test(merchantName(candidate));
+  return PEER_TO_PEER_PATTERN.test(statementText(candidate));
 }
 
 export function normalizeRefundReversalMerchant(value: string | null | undefined) {

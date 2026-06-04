@@ -651,6 +651,21 @@ test("listTransactions uses nearby reversal context before direction filtering",
   assert.deepEqual(transactions.map((item) => item.id), []);
 });
 
+test("listTransactions avoids duplicate hydration when reversal context adds no rows", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  const middle = client.enrichedTransactions.find((row) => row.id === "tx-middle");
+  if (!middle) throw new Error("Missing fixture transaction.");
+  middle.amount = 250;
+
+  const transactions = await listTransactions(client.asClient(), userId, {
+    direction: "income"
+  });
+
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-middle"]);
+  assert.equal(client.selectCalls.reimbursement_records?.length, 1);
+});
+
 test("listTransactions uses nearby reversal context before review filtering", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);

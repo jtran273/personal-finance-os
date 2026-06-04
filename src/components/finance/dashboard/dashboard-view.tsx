@@ -15,6 +15,10 @@ import type {
 import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
 import { displayCategoryName } from "@/lib/finance/classification";
 import type { LiabilitiesDueSummary, LiabilityAccountSummary } from "@/lib/finance/liabilities";
+import {
+  excludeMatchedRefundReversalTransactions,
+  filterReportableInflowTransactions
+} from "@/lib/finance/refund-reversals";
 import { hasOpenReview, isSpendingIntent, type CategoryBreakdownSummary } from "@/lib/finance/spending";
 import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
@@ -351,29 +355,94 @@ function cardPaymentAction(row: LiabilityAccountSummary) {
 
   if (row.status === "overdue") return `Pay today: at least the ${minimumPayment}, full balance if cash allows.`;
   if (row.status === "due-soon") return `Pay by ${row.estimatedDueDate ? formatDate(row.estimatedDueDate) : "the due date"}: at least the ${minimumPayment}.`;
-  return `Schedule at least the ${minimumPayment}; pay more before statement close if utilization is high.`;
+  return `Schedule at least the ${minimumPayment}; pay more if utilization is high.`;
 }
 
-function cardUtilizationAction(row: LiabilityAccountSummary) {
+function cardMinimumPaymentAmount(row: LiabilityAccountSummary) {
+  if (row.amountOwed <= 0) return 0;
+  if (row.minimumPaymentAmount && row.minimumPaymentAmount > 0) {
+    return Math.min(row.amountOwed, row.minimumPaymentAmount);
+  }
+  return row.amountOwed;
+}
+
+function cardRecommendedPayment(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
+  if (row.amountOwed <= 0) return 0;
+
+  const minimumPayment = cardMinimumPaymentAmount(row);
+
+  if (summary.coverageDelta >= 0) return row.amountOwed;
+  if (row.status === "overdue" || row.status === "due-soon") return minimumPayment;
+
   if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) {
-    return "Credit limit missing, so utilization guidance is limited.";
+    return minimumPayment;
   }
 
-  const owed = row.amountOwed;
-  const underThirtyTarget = row.creditLimit * 0.3;
-  const underTenTarget = row.creditLimit * 0.1;
-
   if (row.utilizationPercent >= 30) {
-    const payment = Math.max(0, owed - underThirtyTarget);
-    return `For score health, pay about ${formatMoney(payment)} to get under 30% utilization.`;
+    return Math.min(row.amountOwed, Math.max(minimumPayment, row.amountOwed - row.creditLimit * 0.3));
   }
 
   if (row.utilizationPercent >= 10) {
-    const payment = Math.max(0, owed - underTenTarget);
-    return `Good, but ${formatMoney(payment)} more would move this card near 10% utilization.`;
+    return Math.min(row.amountOwed, Math.max(minimumPayment, row.amountOwed - row.creditLimit * 0.1));
   }
 
-  return "Utilization is score-friendly; keep paying on time.";
+  return minimumPayment;
+}
+
+function cardPrimaryAction(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
+  if (row.amountOwed <= 0) return "No payment action needed right now.";
+
+  const payment = cardRecommendedPayment(row, summary);
+  const paymentCopy = payment > 0 ? formatMoney(payment) : "a payment";
+  const coverageCopy = payment > 0 && payment <= summary.cashAvailable
+    ? "Cash covers this action."
+    : payment > summary.cashAvailable
+      ? `Cash is short by ${formatMoney(payment - Math.max(0, summary.cashAvailable))} for this action.`
+      : "";
+
+  if (row.status === "overdue") {
+    return `Pay ${paymentCopy} today. ${coverageCopy}`.trim();
+  }
+
+  if (row.status === "due-soon") {
+    const dueCopy = row.estimatedDueDate ? ` by ${formatDate(row.estimatedDueDate)}` : " by the due date";
+    return `Pay ${paymentCopy}${dueCopy}. ${coverageCopy}`.trim();
+  }
+
+  if (row.utilizationPercent !== null && row.creditLimit && row.creditLimit > 0) {
+    if (row.utilizationPercent >= 30 && payment > 0) {
+      return `Pay about ${paymentCopy} to move this card under 30% utilization. ${coverageCopy}`.trim();
+    }
+    if (summary.coverageDelta >= 0) {
+      return `Cash can clear this card; pay ${paymentCopy} if you want the balance gone.`;
+    }
+  }
+
+  return cardPaymentAction(row);
+}
+
+function cardDueDetail(row: LiabilityAccountSummary) {
+  if (row.amountOwed <= 0) return "No balance is currently owed.";
+  if (!row.estimatedDueDate) return "Due date is not available from connected data.";
+  const source = row.dueDateIsActual ? "Issuer due date" : "Estimated due date";
+  return `${source}: ${formatDate(row.estimatedDueDate)}.`;
+}
+
+function cardUtilizationDetail(row: LiabilityAccountSummary) {
+  if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) {
+    return "Credit limit is not reported, so utilization is not ranked for this card.";
+  }
+
+  const utilization = `${row.utilizationPercent.toFixed(1)}% of ${formatMoney(row.creditLimit)}`;
+  if (row.utilizationPercent >= 30) {
+    const payment = Math.min(row.amountOwed, Math.max(cardMinimumPaymentAmount(row), row.amountOwed - row.creditLimit * 0.3));
+    return `${utilization} limit. About ${formatMoney(payment)} would move it under 30%.`;
+  }
+  if (row.utilizationPercent >= 10) {
+    const payment = Math.min(row.amountOwed, Math.max(cardMinimumPaymentAmount(row), row.amountOwed - row.creditLimit * 0.1));
+    return `${utilization} limit. About ${formatMoney(payment)} would move it near 10%.`;
+  }
+  return `${utilization} limit.`;
 }
 
 function cardStatusClass(row: LiabilityAccountSummary) {
@@ -1008,6 +1077,7 @@ function buildIncomeBreakdownForRange(
   previousFrom: string,
   previousTo: string
 ): IncomeBreakdownSummary {
+  const reportableInflows = filterReportableInflowTransactions(transactions);
   const currentRows = new Map<string, {
     amount: number;
     count: number;
@@ -1018,11 +1088,10 @@ function buildIncomeBreakdownForRange(
   const previousAmounts = new Map<string, number>();
   let totalAmount = 0;
 
-  transactions.forEach((transaction) => {
+  reportableInflows.forEach((transaction) => {
     if (transaction.date < previousFrom || transaction.date > toDate) return;
 
     const amount = dashboardTransactionIncomeAmount(transaction);
-    if (amount <= 0) return;
 
     const id = transaction.categoryId;
     const label = transaction.category || "Other income";
@@ -1098,6 +1167,7 @@ function buildDashboardCategoryBreakdownForRange(
   previousFrom: string,
   previousTo: string
 ): CategoryBreakdownSummary {
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const currentRows = new Map<string, {
     amount: number;
     categoryIds: Set<string>;
@@ -1108,7 +1178,7 @@ function buildDashboardCategoryBreakdownForRange(
   const previousAmounts = new Map<string, number>();
   let totalAmount = 0;
 
-  transactions.forEach((transaction) => {
+  reportableTransactions.forEach((transaction) => {
     if (transaction.date < previousFrom || transaction.date > toDate) return;
 
     const amount = dashboardTransactionSpendingAmount(transaction);
@@ -1182,6 +1252,7 @@ function categoryRangeBounds(
   rangeKey: TrendRangeKey,
   anchorDate: string
 ) {
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const range = rangeOptionForKey(rangeKey);
   if (range.days) {
     return {
@@ -1190,7 +1261,7 @@ function categoryRangeBounds(
     };
   }
 
-  const firstTransactionDate = transactions.reduce<string | null>(
+  const firstTransactionDate = reportableTransactions.reduce<string | null>(
     (earliest, transaction) => {
       if (dashboardTransactionSpendingAmount(transaction) <= 0) return earliest;
       return earliest === null || transaction.date < earliest ? transaction.date : earliest;
@@ -1209,6 +1280,7 @@ function buildCategoryTrend(
   fromDate: string,
   toDate: string
 ) {
+  const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const grouped = new Map<string, {
     byDate: Map<string, number>;
     categoryIds: Set<string>;
@@ -1225,7 +1297,7 @@ function buildCategoryTrend(
   let totalCount = 0;
   let pendingAmount = 0;
 
-  transactions.forEach((transaction) => {
+  reportableTransactions.forEach((transaction) => {
     if (transaction.date < fromDate || transaction.date > toDate) return;
 
     const amount = dashboardTransactionSpendingAmount(transaction);
@@ -1315,8 +1387,7 @@ function CashInflowsPanel({
     if (range.days) {
       return { fromDate: addDaysIso(asOfDate, -(range.days - 1)), toDate: asOfDate };
     }
-    const firstIncomeDate = transactions.reduce<string | null>((earliest, transaction) => {
-      if (dashboardTransactionIncomeAmount(transaction) <= 0) return earliest;
+    const firstIncomeDate = filterReportableInflowTransactions(transactions).reduce<string | null>((earliest, transaction) => {
       return earliest === null || transaction.date < earliest ? transaction.date : earliest;
     }, null);
     return { fromDate: firstIncomeDate ?? asOfDate, toDate: asOfDate };
@@ -1860,7 +1931,8 @@ function CashAccountsPanel({ accounts }: { accounts: readonly AccountRecord[] })
 function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) {
   if (summary.rows.length === 0) return null;
 
-  const visibleRows = summary.rows.slice(0, 4);
+  const practicalRowLimit = 6;
+  const visibleRows = summary.rows.length <= practicalRowLimit ? summary.rows : summary.rows.slice(0, practicalRowLimit);
   const coverageTone = summary.coverageDelta < 0 ? styles.liabilityOverdue : styles.liabilityPaid;
   const coverageCopy = summary.coverageDelta < 0
     ? `Cash is short by ${formatMoney(Math.abs(summary.coverageDelta))} if you paid every card today.`
@@ -1874,10 +1946,10 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
           <h3 className={styles.liabilityHeadline}>{formatMoney(summary.totalOwed)}</h3>
           <p className={styles.liabilityCoverage}>
             {summary.hasOverdue
-              ? "Pay overdue cards first, then lower high utilization."
+              ? "Best action first: overdue cards, then cash-covered payments, then utilization."
               : summary.hasDueSoon
-                ? "Handle due-soon cards first, then optimize utilization."
-                : "Next payments and utilization guidance for your cards."}
+                ? "Best action first: due-soon cards, then cash-covered payments, then utilization."
+                : "Best action first: cash-covered payments, then utilization."}
           </p>
         </div>
         <div className={styles.liabilityCashBlock}>
@@ -1888,11 +1960,11 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
 
       <div className={styles.cardActionSummary}>
         <ShieldCheck size={16} aria-hidden />
-        <span>{coverageCopy}</span>
+        <span>{coverageCopy} Utilization uses current balance and reported limit only.</span>
       </div>
 
       <div className={styles.cardActionGrid}>
-        {visibleRows.map((row) => {
+        {visibleRows.map((row, index) => {
           const utilization = row.utilizationPercent ?? 0;
           const utilizationWidth = Math.max(0, Math.min(100, utilization));
           const statusClass = cardStatusClass(row);
@@ -1915,8 +1987,11 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
               </div>
 
               <div className={styles.cardActionGuidance}>
-                <span>{cardPaymentAction(row)}</span>
-                <span>{cardUtilizationAction(row)}</span>
+                <strong className={styles.cardPrimaryAction}>
+                  {index === 0 ? "Best action: " : ""}{cardPrimaryAction(row, summary)}
+                </strong>
+                <span>{cardDueDetail(row)}</span>
+                <span>{cardUtilizationDetail(row)}</span>
               </div>
 
               <div className={styles.cardUtilizationLine}>
@@ -1957,7 +2032,7 @@ export function DashboardView({
   totals
 }: DashboardViewProps) {
   const router = useRouter();
-  const [balanceViewKey, setBalanceViewKey] = useState<DashboardBalanceScope>("netWorth");
+  const [balanceViewKey, setBalanceViewKey] = useState<DashboardBalanceScope>("cashMinusLiabilities");
   const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("1W");
   const [syncState, setSyncState] = useState<"idle" | "syncing">("idle");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
@@ -1965,12 +2040,13 @@ export function DashboardView({
   const cashMinusLiabilities = totals.cash - totals.liabilities;
   const balanceViews: BalanceViewOption[] = useMemo(() => [
     {
-      description: "All assets minus credit card balances.",
-      icon: Landmark,
-      key: "netWorth",
-      label: "Net worth",
+      description: "Cash and card activity together for the day-to-day view.",
+      icon: WalletCards,
+      key: "cashMinusLiabilities",
+      label: "Cash flow",
       positiveIsGood: true,
-      value: totals.netWorth
+      tone: cashMinusLiabilities < 0 ? "negative" : "positive",
+      value: cashMinusLiabilities
     },
     {
       description: "Checking, savings, and positive non-transfer inflows.",
@@ -1981,13 +2057,12 @@ export function DashboardView({
       value: cashScopeValue
     },
     {
-      description: "Cash and card activity together for the day-to-day view.",
-      icon: WalletCards,
-      key: "cashMinusLiabilities",
-      label: "Cash flow",
+      description: "All assets minus credit card balances.",
+      icon: Landmark,
+      key: "netWorth",
+      label: "Net worth",
       positiveIsGood: true,
-      tone: cashMinusLiabilities < 0 ? "negative" : "positive",
-      value: cashMinusLiabilities
+      value: totals.netWorth
     }
   ], [cashMinusLiabilities, cashScopeValue, totals.netWorth]);
   const selectedBalanceView = balanceViews.find((option) => option.key === balanceViewKey) ?? balanceViews[0];

@@ -273,7 +273,11 @@ test("demo login opens the seeded finance workspace", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Tally dashboard" })).toBeVisible();
   await expect(page.getByText("Seeded demo workspace")).toBeVisible();
   await expect(page.getByText("Real data workspace")).toHaveCount(0);
-  await expect(page.getByLabel("Balance dashboard").getByText("Net worth", { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+  const balanceView = page.getByLabel("Balance view");
+  await expect(balanceView.getByRole("button", { exact: true, name: "Cash flow balance view" })).toHaveAttribute("aria-pressed", "true", { timeout: 15_000 });
+  await expect(balanceView.getByRole("button").nth(0)).toContainText("Cash flow");
+  await expect(balanceView.getByRole("button").nth(1)).toContainText("Inflows / liquid assets");
+  await expect(balanceView.getByRole("button").nth(2)).toContainText("Net worth");
   await expectNoVisibleLegacyBrand(page);
 });
 
@@ -549,15 +553,18 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/dashboard");
 
-  let chart = page.locator("svg[aria-label='Net worth balance trend']");
+  let chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeVisible();
   const netWorthView = page.getByRole("button", { exact: true, name: "Net worth balance view" });
   const incomeView = page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" });
   const cashFlowView = page.getByRole("button", { exact: true, name: "Cash flow balance view" });
   const balanceRangeControls = page.getByLabel("Balance trend range");
-  await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
+  await expect(cashFlowView).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Balance view").getByRole("button").nth(0)).toContainText("Cash flow");
+  await expect(page.getByLabel("Balance view").getByRole("button").nth(1)).toContainText("Inflows / liquid assets");
+  await expect(page.getByLabel("Balance view").getByRole("button").nth(2)).toContainText("Net worth");
+  await expect(netWorthView).toBeVisible();
   await expect(incomeView).toBeVisible();
-  await expect(cashFlowView).toBeVisible();
   await expect(page.getByRole("button", { exact: true, name: "Debt balance view" })).toHaveCount(0);
   await expect(page.getByRole("button", { exact: true, name: "Spendable balance view" })).toHaveCount(0);
   await expect(balanceRangeControls.getByRole("button", { exact: true, name: "1W" })).toHaveAttribute("aria-pressed", "true");
@@ -573,6 +580,10 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const chartBox = await chart.boundingBox();
   expect(chartBox?.width ?? 0).toBeGreaterThan(250);
   expect(chartBox?.height ?? 0).toBeGreaterThan(100);
+  await netWorthView.click();
+  await expect(netWorthView).toHaveAttribute("aria-pressed", "true");
+  chart = page.locator("svg[aria-label='Net worth balance trend']");
+  await expect(chart).toBeVisible();
   await expect(page.getByText(/balance snapshots available/i)).toBeVisible();
   await expect(page.getByText("Selected period", { exact: true })).toBeVisible();
 
@@ -685,7 +696,7 @@ test("dashboard keeps the balance trend readable on mobile", async ({ baseURL, c
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto("/dashboard");
 
-  const chart = page.locator("svg[aria-label='Net worth balance trend']");
+  const chart = page.locator("svg[aria-label='Cash flow balance trend']");
   await expect(chart).toBeHidden();
 
   await expect(page.getByLabel("Mobile balance trend summary")).toBeVisible();
@@ -781,6 +792,16 @@ test("transaction review cards stay readable on narrow mobile", async ({ baseURL
   await expectTransactionControlsVisible(page);
   await expectTransactionStatusBadgesVisible(page);
   await expectNoPageOverflow(page);
+});
+
+test("income transaction filter shows only positive inflows", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.goto("/transactions?direction=income");
+
+  const filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
+  expect(await page.locator("td[aria-label^='Inflow']").count()).toBeGreaterThan(0);
+  await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
 });
 
 test("transactions keep amount and edit controls visible at laptop width", async ({ baseURL, context, page }) => {

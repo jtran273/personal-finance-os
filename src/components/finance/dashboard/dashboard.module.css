@@ -1033,6 +1033,13 @@
   min-width: 0;
 }
 
+.cardPrimaryAction {
+  color: var(--ink);
+  font-size: var(--text-ui-sm);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
 .cardUtilizationLine {
   display: flex;
   align-items: center;

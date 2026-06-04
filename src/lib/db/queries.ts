@@ -31,6 +31,7 @@ import type {
   ReviewItemRow,
   ReviewQueueItem,
   ReviewReason,
+  ReviewResolutionKind,
   ReviewStatus,
   TransactionIntent,
   TransactionRecord,
@@ -384,6 +385,7 @@ function toReviewItemRecord(row: ReviewItemRow): ReviewItemRecord {
     confidence: row.confidence,
     resolvedAt: row.resolved_at,
     resolutionNote: row.resolution_note,
+    resolutionKind: row.resolution_kind ?? null,
     createdAt: row.created_at
   };
 }
@@ -1557,6 +1559,7 @@ export async function acceptAgentProposal(
       userId,
       review.id,
       "resolved",
+      "accepted_ai",
       "Accepted persisted agent proposal."
     );
   } else if (before.proposalType === "reimbursement_match") {
@@ -1906,12 +1909,14 @@ export async function resolveReviewItem(
   userId: string,
   reviewItemId: string,
   status: Exclude<ReviewStatus, "open">,
+  resolutionKind: ReviewResolutionKind,
   resolutionNote?: string,
   options: { explanation?: string } = {}
 ): Promise<ReviewItemRecord> {
   const update: ReviewItemUpdate = {
     status,
     resolved_at: new Date().toISOString(),
+    resolution_kind: resolutionKind,
     resolution_note: resolutionNote ?? null
   };
 

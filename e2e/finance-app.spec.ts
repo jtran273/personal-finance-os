@@ -650,7 +650,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   const incomePanel = page.getByLabel("Cash inflows by category");
   await expect(incomePanel).toBeVisible();
   await expect(incomePanel).toContainText("transfers excluded");
-  await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
   const incomeLinks = await incomePanel.getByRole("link").evaluateAll((links) => (
     links.map((link) => link.getAttribute("href") ?? "")
   ));
@@ -688,6 +688,26 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.getByText("Transactions for selected point")).toBeVisible();
   await page.getByRole("button", { exact: true, name: "Clear point" }).click();
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test("dashboard inflows drilldown opens income-only transactions", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.goto("/dashboard");
+
+  await page.getByRole("button", { exact: true, name: "Inflows / liquid assets balance view" }).click();
+  await expect(page.getByLabel("Cash inflow range").getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
+
+  const incomePanel = page.getByLabel("Cash inflows by category");
+  const openTransactions = incomePanel.getByRole("link", { exact: true, name: "Open transactions" });
+  await expect(openTransactions).toHaveAttribute("href", /direction=income/);
+  await openTransactions.click();
+
+  await expect(page).toHaveURL(/\/transactions\?.*direction=income/);
+  const filterForm = page.locator("form[action='/transactions']");
+  await expect(filterForm.locator("input[name='direction']")).toHaveValue("income");
+  await expect(page.locator("td[aria-label^='Inflow']").first()).toBeVisible();
+  await expect(page.locator("td[aria-label^='Outflow']")).toHaveCount(0);
   await expectNoPageOverflow(page);
 });
 
@@ -878,12 +898,16 @@ test("transaction filters, detail view, cleanup guardrail, and export safety wor
   await expect(page.getByRole("button", { name: /read-only demo/i })).toBeDisabled();
 
   await page.goto("/transactions/t25");
+  const editFormBox = await page.getByLabel("Edit transaction enrichment").boundingBox();
   const reimbursementApproval = page.getByLabel("Reimbursement linking");
   await expect(reimbursementApproval).toContainText("Reimbursement approval");
   await expect(reimbursementApproval).toContainText("Link this positive inflow");
   await expect(reimbursementApproval).toContainText("$60.00 outstanding");
   await expect(reimbursementApproval).toContainText("preview-only");
   await expect(reimbursementApproval.getByRole("button", { name: /preview only/i }).first()).toBeDisabled();
+  const reimbursementBox = await reimbursementApproval.boundingBox();
+  expect(editFormBox?.width).toBeGreaterThan(360);
+  expect(reimbursementBox?.y).toBeGreaterThan((editFormBox?.y ?? 0) + (editFormBox?.height ?? 0) - 1);
   await expectNoSensitiveFinanceText(page);
   await expectNoPageOverflow(page);
 });

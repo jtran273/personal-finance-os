@@ -2034,6 +2034,7 @@ export function DashboardView({
   const router = useRouter();
   const [balanceViewKey, setBalanceViewKey] = useState<DashboardBalanceScope>("cashMinusLiabilities");
   const [trendRangeKey, setTrendRangeKey] = useState<TrendRangeKey>("1W");
+  const [cashInflowRangeKey, setCashInflowRangeKey] = useState<TrendRangeKey>("ALL");
   const [syncState, setSyncState] = useState<"idle" | "syncing">("idle");
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const cashScopeValue = totals.cash;
@@ -2220,8 +2221,8 @@ export function DashboardView({
               <CashAccountsPanel accounts={accounts} />
               <CashInflowsPanel
                 asOfDate={asOfDate}
-                rangeKey={trendRangeKey}
-                setRangeKey={setTrendRangeKey}
+                rangeKey={cashInflowRangeKey}
+                setRangeKey={setCashInflowRangeKey}
                 transactions={scopedTransactions}
               />
             </>

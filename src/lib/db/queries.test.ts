@@ -647,6 +647,38 @@ test("listTransactions uses nearby reversal context before direction filtering",
   assert.deepEqual(transactions.map((item) => item.id), []);
 });
 
+test("listTransactions uses nearby reversal context before review filtering", async () => {
+  const client = new FakeFinanceClient();
+  seedTransactionRows(client);
+  client.rawTransactions.push(
+    fixtureRawTransaction("raw-canva-charge", "2026-06-02", "Canva* 04900-22971910"),
+    fixtureRawTransaction("raw-canva-refund", "2026-06-03", "Canva refund")
+  );
+  client.enrichedTransactions.push(
+    {
+      ...fixtureEnrichedTransaction("tx-canva-charge", "raw-canva-charge", "2026-06-02", "Canva* 04900-22971910"),
+      amount: -50,
+      category_name: "Shopping"
+    },
+    {
+      ...fixtureEnrichedTransaction("tx-canva-refund", "raw-canva-refund", "2026-06-03", "Canva refund"),
+      amount: 50,
+      category_name: "Shopping"
+    }
+  );
+  client.reviewItems.push(fixtureReviewRow("review-canva-refund", "tx-canva-refund", "open"));
+
+  const transactions = await listTransactions(client.asClient(), userId, {
+    fromDate: "2026-06-03",
+    limit: 10,
+    reviewStatus: "open",
+    toDate: "2026-06-03"
+  });
+
+  assert.deepEqual(transactions.map((item) => item.id), []);
+  assert.equal(client.limitCalls.enriched_transactions, undefined);
+});
+
 test("listTransactions can skip raw Plaid context when callers do not render it", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);
@@ -688,29 +720,30 @@ test("listReviewItems applies limits after refund suppression and can skip raw P
 test("listReviewItems does not underfill limited reads after suppressing refund noise", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);
-  client.rawTransactions.push(
-    fixtureRawTransaction("raw-canva-charge", "2026-06-02", "Canva* 04900-22971910"),
-    fixtureRawTransaction("raw-canva-refund", "2026-06-03", "Canva refund")
-  );
-  client.enrichedTransactions.push(
-    {
-      ...fixtureEnrichedTransaction("tx-canva-charge", "raw-canva-charge", "2026-06-02", "Canva* 04900-22971910"),
-      amount: -50
-    },
-    {
-      ...fixtureEnrichedTransaction("tx-canva-refund", "raw-canva-refund", "2026-06-03", "Canva refund"),
-      amount: 50
-    }
-  );
-  client.reviewItems.push(
-    fixtureReviewRow("review-canva-refund", "tx-canva-refund", "open", "missing-category"),
-    fixtureReviewRow("review-middle", "tx-middle", "open")
-  );
+  for (let index = 0; index < 11; index += 1) {
+    const amount = 50 + index;
+    client.rawTransactions.push(
+      fixtureRawTransaction(`raw-canva-charge-${index}`, "2026-06-02", `Canva ${index}`),
+      fixtureRawTransaction(`raw-canva-refund-${index}`, "2026-06-03", `Canva ${index}`)
+    );
+    client.enrichedTransactions.push(
+      {
+        ...fixtureEnrichedTransaction(`tx-canva-charge-${index}`, `raw-canva-charge-${index}`, "2026-06-02", `Canva ${index}`),
+        amount: -amount
+      },
+      {
+        ...fixtureEnrichedTransaction(`tx-canva-refund-${index}`, `raw-canva-refund-${index}`, "2026-06-03", `Canva ${index}`),
+        amount
+      }
+    );
+    client.reviewItems.push(fixtureReviewRow(`review-canva-refund-${index}`, `tx-canva-refund-${index}`, "open", "missing-category"));
+  }
+  client.reviewItems.push(fixtureReviewRow("review-middle", "tx-middle", "open"));
 
   const reviewItems = await listReviewItems(client.asClient(), userId, "open", { limit: 1 });
 
   assert.deepEqual(reviewItems.map((item) => item.id), ["review-middle"]);
-  assert.deepEqual(client.limitCalls.review_items, [11]);
+  assert.deepEqual(client.limitCalls.review_items, [11, 11]);
 });
 
 test("listReviewItems suppresses one-sided refund reversal review noise", async () => {
@@ -758,7 +791,7 @@ test("listReviewItems loads refund context in bounded date windows", async () =>
   assert.equal(client.selectCalls.enriched_transactions?.length, 3);
 });
 
-test("listTransactions pushes transfer and review filters before hydration limits", async () => {
+test("listTransactions pushes transfer filters before hydration limits", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);
   const newest = client.enrichedTransactions.find((row) => row.id === "tx-newest");
@@ -786,7 +819,7 @@ test("listTransactions pushes transfer and review filters before hydration limit
   assert.deepEqual(nonTransfers.map((item) => item.id), ["tx-middle", "tx-older"]);
   assert.deepEqual(openReviews.map((item) => item.id), ["tx-middle"]);
   assert.deepEqual(largeReviews.map((item) => item.id), ["tx-older"]);
-  assert.deepEqual(client.limitCalls.enriched_transactions, [2, 1, 1]);
+  assert.deepEqual(client.limitCalls.enriched_transactions, [2]);
   assert.deepEqual(
     client.selectCalls.review_items?.filter((columns) => columns === "enriched_transaction_id"),
     ["enriched_transaction_id", "enriched_transaction_id"]
@@ -812,6 +845,7 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
   private lteFilters: Array<(row: Row) => boolean> = [];
   private limitCount: number | null = null;
   private orders: Array<{ column: keyof Row; ascending: boolean }> = [];
+  private rangeBounds: { from: number; to: number } | null = null;
   private singleResult = false;
 
   constructor(
@@ -858,6 +892,12 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
   limit(count: number) {
     this.limitCount = count;
     this.onLimit?.(count);
+    return this;
+  }
+
+  range(from: number, to: number) {
+    this.rangeBounds = { from, to };
+    this.onLimit?.(to - from + 1);
     return this;
   }
 
@@ -925,6 +965,9 @@ class FakeQueryBuilder<Row extends Record<string, unknown>> {
 
     if (this.limitCount !== null) {
       matches = matches.slice(0, this.limitCount);
+    }
+    if (this.rangeBounds) {
+      matches = matches.slice(this.rangeBounds.from, this.rangeBounds.to + 1);
     }
 
     return { data: this.singleResult ? matches[0] ?? null : matches, error: null };

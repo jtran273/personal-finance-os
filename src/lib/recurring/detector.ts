@@ -75,7 +75,7 @@ const SUBSCRIPTION_MERCHANT_PATTERN =
 const SUBSCRIPTION_CATEGORY_PATTERN =
   /\b(?:ai tools|hosting|saas|software|subscriptions?)\b/;
 const DISCRETIONARY_MERCHANT_PATTERN =
-  /\b(?:arco|bagel|car wash|chevron|dining|exxon|fuel|gas|mobil|pizza|restaurant|retail wash|shell|thai|valero)\b/;
+  /\b(?:arco|bagel|car wash|chevron|dining|exxon|fuel|mobil|pizza|restaurant|retail wash|shell|thai|valero)\b/;
 const DISCRETIONARY_CATEGORY_PATTERN =
   /\b(?:dining|food|gas|restaurants?|transportation \/ gas)\b/;
 

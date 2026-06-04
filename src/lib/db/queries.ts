@@ -87,6 +87,7 @@ interface FinanceFilterBuilder<Row> extends PromiseLike<QueryResult<Row[]>> {
   neq(column: string, value: unknown): FinanceFilterBuilder<Row>;
   order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FinanceFilterBuilder<Row>;
   limit(count: number): FinanceFilterBuilder<Row>;
+  range(from: number, to: number): FinanceFilterBuilder<Row>;
   single(): PromiseLike<QueryResult<Row>>;
 }
 
@@ -563,6 +564,13 @@ function withReviews(transaction: TransactionRecord, reviews: ReviewItemRecord[]
 
 function suppressMatchedRefundReversalReviews(transactions: readonly TransactionRecord[]) {
   const matchedIds = getMatchedRefundReversalTransactionIds(transactions);
+  return suppressMatchedRefundReversalReviewsById(transactions, matchedIds);
+}
+
+function suppressMatchedRefundReversalReviewsById(
+  transactions: readonly TransactionRecord[],
+  matchedIds: ReadonlySet<string>
+) {
   if (matchedIds.size === 0) return [...transactions];
 
   return transactions.map((transaction) => {
@@ -577,11 +585,19 @@ function suppressMatchedRefundReversalReviews(transactions: readonly Transaction
   });
 }
 
+function hasActiveReviewFilter(filters: Pick<TransactionListFilters, "reviewReason" | "reviewStatus">) {
+  return Boolean(
+    (filters.reviewStatus && filters.reviewStatus !== "all") ||
+    (filters.reviewReason && filters.reviewReason !== "all")
+  );
+}
+
 function requiresHydratedTransactionFiltering(filters: TransactionListFilters) {
   return Boolean(
     filters.search?.trim() ||
     (filters.quality && filters.quality !== "all") ||
-    (filters.direction && filters.direction !== "all")
+    (filters.direction && filters.direction !== "all") ||
+    hasActiveReviewFilter(filters)
   );
 }
 
@@ -600,11 +616,16 @@ export function filterTransactionRecordsForList(
   filters: Pick<TransactionListFilters, "direction" | "excludeTransfers" | "limit" | "offset" | "quality" | "reviewReason" | "reviewStatus" | "search"> = {},
   options: { matchedRefundReversalIds?: ReadonlySet<string> } = {}
 ) {
+  const reviewReadyTransactions = hasActiveReviewFilter(filters)
+    ? options.matchedRefundReversalIds
+      ? suppressMatchedRefundReversalReviewsById(transactions, options.matchedRefundReversalIds)
+      : suppressMatchedRefundReversalReviews(transactions)
+    : [...transactions];
   const reportableTransactions = filters.direction && filters.direction !== "all"
     ? options.matchedRefundReversalIds
-      ? transactions.filter((transaction) => !options.matchedRefundReversalIds?.has(transaction.id))
-      : excludeMatchedRefundReversalTransactions(transactions)
-    : [...transactions];
+      ? reviewReadyTransactions.filter((transaction) => !options.matchedRefundReversalIds?.has(transaction.id))
+      : excludeMatchedRefundReversalTransactions(reviewReadyTransactions)
+    : reviewReadyTransactions;
   const search = normalizeSearchText(filters.search ?? "");
   const searched = search
     ? reportableTransactions.filter((transaction) => transactionMatchesSearch(transaction, search))
@@ -830,24 +851,27 @@ async function loadTransactionRowsWithRefundReversalContext(
 ) {
   if (rows.length === 0) return [];
 
-  const dates = rows.map((row) => row.date).sort();
-  const fromDate = addDaysIso(dates[0] ?? "", -DEFAULT_REVERSAL_WINDOW_DAYS);
-  const toDate = addDaysIso(dates[dates.length - 1] ?? "", DEFAULT_REVERSAL_WINDOW_DAYS);
-  if (!fromDate || !toDate) return [...rows];
+  const rowsById = new Map(rows.map((row) => [row.id, row]));
+  const windows = refundContextWindowsForRows(rows);
+  if (windows.length === 0) return [...rows];
 
-  let query = client
-    .from("enriched_transactions")
-    .select("*")
-    .eq("user_id", userId)
-    .gte("date", fromDate)
-    .lte("date", toDate);
+  for (const window of windows) {
+    let query = client
+      .from("enriched_transactions")
+      .select("*")
+      .eq("user_id", userId)
+      .gte("date", window.fromDate)
+      .lte("date", window.toDate);
 
-  if (accountIds.length > 0) {
-    query = query.in("account_id", accountIds);
+    if (accountIds.length > 0) {
+      query = query.in("account_id", accountIds);
+    }
+
+    const contextRows = expectData(await query, "Load transaction refund reversal context");
+    contextRows.forEach((row) => rowsById.set(row.id, row));
   }
 
-  const contextRows = expectData(await query, "Load transaction refund reversal context");
-  return [...new Map([...rows, ...contextRows].map((row) => [row.id, row])).values()];
+  return [...rowsById.values()];
 }
 
 export async function listAccounts(client: FinanceSupabaseClient, userId: string): Promise<AccountRecord[]> {
@@ -1072,7 +1096,10 @@ export async function listTransactions(
   }
 
   const enrichedRows = expectData(await query, "List enriched transactions");
-  const contextRows = filters.direction && filters.direction !== "all"
+  const needsRefundReversalContext =
+    (filters.direction && filters.direction !== "all") ||
+    hasActiveReviewFilter(filters);
+  const contextRows = needsRefundReversalContext
     ? await loadTransactionRowsWithRefundReversalContext(client, userId, enrichedRows, accountIds)
     : enrichedRows;
   const contextTransactions = contextRows === enrichedRows
@@ -1186,6 +1213,39 @@ export async function listReviewItems(
   status: ReviewStatus | "all" = "open",
   options: ReviewItemListOptions = {}
 ): Promise<ReviewQueueItem[]> {
+  const fetchLimit = reviewRowFetchLimit(options.limit);
+  const collectedItems: ReviewQueueItem[] = [];
+  let offset = 0;
+
+  while (true) {
+    const reviewRows = await listReviewItemRows(client, userId, status, fetchLimit, offset);
+    if (reviewRows.length === 0) break;
+
+    const pageItems = await hydrateReviewQueueItems(client, userId, reviewRows, options);
+    collectedItems.push(...pageItems);
+
+    if (
+      fetchLimit === undefined ||
+      reviewRows.length < fetchLimit ||
+      (options.limit !== undefined && collectedItems.length >= options.limit)
+    ) {
+      break;
+    }
+    offset += fetchLimit;
+  }
+
+  return collectedItems
+    .sort((a, b) => Math.abs(b.transaction.amount) - Math.abs(a.transaction.amount))
+    .slice(0, options.limit);
+}
+
+async function listReviewItemRows(
+  client: FinanceSupabaseClient,
+  userId: string,
+  status: ReviewStatus | "all",
+  fetchLimit: number | undefined,
+  offset: number
+) {
   let query = client
     .from("review_items")
     .select("*")
@@ -1195,11 +1255,19 @@ export async function listReviewItems(
   if (status !== "all") {
     query = query.eq("status", status);
   }
-  const fetchLimit = reviewRowFetchLimit(options.limit);
   if (fetchLimit !== undefined) {
-    query = query.limit(fetchLimit);
+    query = query.range(offset, offset + fetchLimit - 1);
   }
-  const reviewRows = expectData(await query, "List review items");
+
+  return expectData(await query, "List review items");
+}
+
+async function hydrateReviewQueueItems(
+  client: FinanceSupabaseClient,
+  userId: string,
+  reviewRows: readonly ReviewItemRow[],
+  options: ReviewItemListOptions
+) {
   if (reviewRows.length === 0) return [];
 
   const transactionIds = unique(reviewRows.map((row) => row.enriched_transaction_id));
@@ -1229,8 +1297,7 @@ export async function listReviewItems(
       return { ...review, transaction };
     })
     .filter((item): item is ReviewQueueItem => item !== null)
-    .sort((a, b) => Math.abs(b.transaction.amount) - Math.abs(a.transaction.amount))
-    .slice(0, options.limit);
+    .sort((a, b) => Math.abs(b.transaction.amount) - Math.abs(a.transaction.amount));
 }
 
 export async function getReviewQueueItemById(

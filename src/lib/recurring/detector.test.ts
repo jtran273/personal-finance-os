@@ -159,6 +159,18 @@ export const recurringQualityFixture = [
   tx("chatgpt-3", "OpenAI ChatGPT", "2026-03-11", -25, true, {
     categoryId: "category-ai-tools",
     category: "Software / AI Tools"
+  }),
+  tx("socal-gas-1", "SoCal Gas", "2026-01-05", -82, false, {
+    categoryId: "category-utilities",
+    category: "Utilities"
+  }),
+  tx("socal-gas-2", "SoCal Gas", "2026-02-05", -82, false, {
+    categoryId: "category-utilities",
+    category: "Utilities"
+  }),
+  tx("socal-gas-3", "SoCal Gas", "2026-03-05", -82, false, {
+    categoryId: "category-utilities",
+    category: "Utilities"
   })
 ] satisfies readonly RecurringDetectionTransaction[];
 
@@ -256,6 +268,7 @@ function assertRecurringQualityFixture(candidates: readonly RecurringCandidate[]
 
   expectCandidate(candidates, "Spotify", "monthly", "new-recurring");
   expectCandidate(candidates, "Claude Annual", "annual", "new-recurring");
+  expectCandidate(candidates, "SoCal Gas", "monthly", "new-recurring");
 
   const chatGpt = requireCandidate(candidates, "OpenAI ChatGPT");
   if (chatGpt.priceChange?.source !== "known-recurring" || chatGpt.amount !== 25) {

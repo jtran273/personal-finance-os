@@ -635,7 +635,10 @@ function addCadenceFromAnchor(
   intervalCount: number,
   cadenceMonths: number | null
 ): string {
-  if (cadenceMonths === null) return addCadence(date, cadence);
+  if (cadenceMonths === null) {
+    const cadenceDays = dayBasedCadenceDays(cadence);
+    return cadenceDays === null ? addCadence(date, cadence) : addDays(date, cadenceDays * intervalCount);
+  }
   return addMonths(date, cadenceMonths * intervalCount);
 }
 
@@ -643,6 +646,12 @@ function monthBasedCadenceMonths(cadence: DetectedRecurringCadence): number | nu
   if (cadence === "monthly") return 1;
   if (cadence === "quarterly") return 3;
   if (cadence === "annual") return 12;
+  return null;
+}
+
+function dayBasedCadenceDays(cadence: DetectedRecurringCadence): number | null {
+  if (cadence === "weekly") return 7;
+  if (cadence === "biweekly") return 14;
   return null;
 }
 

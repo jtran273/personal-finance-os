@@ -22,6 +22,12 @@ and caps). What remains is production activation and a real-data quality review.
 
 ## 1. Preflight the configuration (read-only, no secrets printed)
 
+Start with the consolidated local/env-shape preflight:
+
+```bash
+npm run ops:preflight
+```
+
 With the production server env loaded:
 
 ```bash
@@ -32,6 +38,9 @@ It reports the **effective** configuration using the same resolvers the runtime
 uses (so what it shows is what the scan will do), printing only whether each
 secret is set — never its value. Exit code is non-zero while required
 credentials are missing.
+
+If `ops:preflight` reports `BLOCKED` for #111, stop there. The remaining steps
+need production env, a scan user id, and signed-in/private finance data review.
 
 ## 2. Activate intentionally
 

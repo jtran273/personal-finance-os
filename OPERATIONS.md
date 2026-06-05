@@ -7,6 +7,7 @@ This runbook covers day-to-day checks, deployment verification, Plaid sync troub
 Step-by-step runbooks for production-verification work that needs real
 credentials/accounts live in [`docs/runbooks/`](docs/runbooks/):
 
+- [Blocked production verification checklist](docs/runbooks/blocked-production-verification.md) (#111/#112/#236) — `npm run ops:preflight`
 - [Verify Supabase finance migrations and Plaid sync](docs/runbooks/verify-supabase-migrations-and-plaid-sync.md) (#236) — `npm run migrations:verify`
 - [Operationalize the LLM reimbursement candidate detector](docs/runbooks/operationalize-llm-reimbursement-detector.md) (#111) — `npm run reimbursement:preflight`
 - [Verify Google Calendar production OAuth and planning signals](docs/runbooks/verify-google-calendar-prod-oauth.md) (#112) — `npm run calendar:prod-smoke`

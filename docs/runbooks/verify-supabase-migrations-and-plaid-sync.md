@@ -16,6 +16,12 @@ Migrations in scope:
 
 ## 1. Fast automated check (read-only)
 
+Start with the consolidated local/env-shape preflight:
+
+```bash
+npm run ops:preflight
+```
+
 From a trusted operator machine with the production Supabase env loaded:
 
 ```bash
@@ -32,6 +38,10 @@ row data. Exit code is non-zero if anything is missing. It refuses to run in CI.
 
 This covers acceptance criteria 1–3 except RLS **policy** presence, which is
 verified by SQL in step 3.
+
+If `ops:preflight` reports `BLOCKED` for #236, stop there. The schema verifier
+needs production Supabase env, and the sync closeout needs a signed-in user or
+the configured OpenClaw refresh token path.
 
 ## 2. Apply migrations if any check fails
 

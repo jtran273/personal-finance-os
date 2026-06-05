@@ -181,12 +181,15 @@ export function calculateNextDueDate(
   asOfDate?: string
 ): string {
   const asOfDay = asOfDate ? dateToDay(asOfDate) : null;
-  let nextDueDate = addCadence(lastChargeDate, cadence);
+  const cadenceMonths = monthBasedCadenceMonths(cadence);
+  let intervalCount = 1;
+  let nextDueDate = addCadenceFromAnchor(lastChargeDate, cadence, intervalCount, cadenceMonths);
 
   while (asOfDay !== null) {
     const nextDueDay = dateToDay(nextDueDate);
     if (nextDueDay === null || nextDueDay > asOfDay) break;
-    nextDueDate = addCadence(nextDueDate, cadence);
+    intervalCount += 1;
+    nextDueDate = addCadenceFromAnchor(lastChargeDate, cadence, intervalCount, cadenceMonths);
   }
 
   return nextDueDate;
@@ -624,6 +627,23 @@ function addCadence(date: string, cadence: DetectedRecurringCadence): string {
   if (cadence === "quarterly") return addMonths(date, 3);
   if (cadence === "annual") return addMonths(date, 12);
   return addMonths(date, 1);
+}
+
+function addCadenceFromAnchor(
+  date: string,
+  cadence: DetectedRecurringCadence,
+  intervalCount: number,
+  cadenceMonths: number | null
+): string {
+  if (cadenceMonths === null) return addCadence(date, cadence);
+  return addMonths(date, cadenceMonths * intervalCount);
+}
+
+function monthBasedCadenceMonths(cadence: DetectedRecurringCadence): number | null {
+  if (cadence === "monthly") return 1;
+  if (cadence === "quarterly") return 3;
+  if (cadence === "annual") return 12;
+  return null;
 }
 
 function isInactiveCandidate(

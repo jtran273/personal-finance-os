@@ -77,6 +77,23 @@ test("recent transaction response exposes only safe transaction fields", () => {
   assertAssistantContextSafe(response);
 });
 
+test("recent transaction response redacts secret-shaped display text", () => {
+  const response = buildOpenClawRecentTransactionsResponse([
+    transaction({
+      accountName: "Checking Bearer abcdefghijklmnop",
+      merchant: "Cafe access-production-abcdefghijkl"
+    })
+  ], {
+    generatedAt: "2026-05-21T12:00:00.000Z",
+    limit: 5
+  });
+
+  assert.equal(response.transactions[0]?.accountNickname, "Checking [redacted]");
+  assert.equal(response.transactions[0]?.merchant, "Cafe [redacted]");
+  assert.doesNotMatch(JSON.stringify(response), /Bearer|access-production-abcdefghijkl/);
+  assertAssistantContextSafe(response);
+});
+
 test("review items response summarizes open review queue", () => {
   const response = buildOpenClawReviewItemsResponse([
     reviewItem(),
@@ -86,6 +103,22 @@ test("review items response summarizes open review queue", () => {
   assert.equal(response.object, "ledger.openclaw.review_items");
   assert.equal(response.openCount, 1);
   assert.deepEqual(response.items.map((item) => item.id), ["review-1"]);
+  assertAssistantContextSafe(response);
+});
+
+test("review items response redacts secret-shaped explanation and merchant text", () => {
+  const response = buildOpenClawReviewItemsResponse([
+    reviewItem({
+      explanation: "Needs check service_role_key=abcdefghijkl",
+      transaction: transaction({
+        merchant: "Coffee sk-proj-abcdefghijklmnopqrst"
+      })
+    })
+  ], { limit: 5 });
+
+  assert.equal(response.items[0]?.explanation, "Needs check [redacted]");
+  assert.equal(response.items[0]?.merchant, "Coffee [redacted]");
+  assert.doesNotMatch(JSON.stringify(response), /service_role_key|sk-proj-abcdefghijklmnopqrst/);
   assertAssistantContextSafe(response);
 });
 
@@ -105,6 +138,20 @@ test("reimbursements response surfaces outstanding reimbursable transactions", (
   assert.equal(response.items[0]?.outstandingAmount, 80);
   assert.equal(response.summary.outstandingAmount, 80);
   assert.equal(response.pageSummary.outstandingAmount, 80);
+  assertAssistantContextSafe(response);
+});
+
+test("reimbursements response redacts secret-shaped merchant text", () => {
+  const response = buildOpenClawReimbursementsResponse([
+    transaction({
+      amount: -80,
+      intent: "reimbursable",
+      merchant: "Dinner postgres://secret.example/db"
+    })
+  ], { limit: 5 });
+
+  assert.equal(response.items[0]?.merchant, "Dinner [redacted]");
+  assert.doesNotMatch(JSON.stringify(response), /postgres:\/\/secret\.example\/db/);
   assertAssistantContextSafe(response);
 });
 

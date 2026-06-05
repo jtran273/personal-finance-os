@@ -122,6 +122,9 @@ export interface OpenClawReadSafety {
 
 const DEFAULT_LIMIT = 5;
 const MAX_LIMIT = 25;
+const REDACTED_TEXT = "[redacted]";
+const SECRET_VALUE_PATTERN =
+  /\bBearer\s+\S{12,}|\b(?:postgres|postgresql|mysql):\/\/[^ \n]+|\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b|\b(?:access|public)-(?:sandbox|development|production)-[A-Za-z0-9_-]{12,}\b|\bservice[_-]?role[_-]?key\s*[:=]\s*\S{12,}/gi;
 
 export class OpenClawFinanceReadBadRequestError extends Error {
   constructor(message: string) {
@@ -153,8 +156,17 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100;
 }
 
+function safeDisplayText(value: string, fallback: string) {
+  const cleaned = value.replace(SECRET_VALUE_PATTERN, REDACTED_TEXT).trim();
+  return cleaned && cleaned !== REDACTED_TEXT ? cleaned : fallback;
+}
+
 function accountNickname(transaction: TransactionRecord) {
-  return transaction.accountName.trim() || "Account";
+  return safeDisplayText(transaction.accountName, "Account");
+}
+
+function merchantName(transaction: Pick<TransactionRecord, "merchant">) {
+  return safeDisplayText(transaction.merchant, "Merchant");
 }
 
 export function buildOpenClawRecentTransactionsResponse(
@@ -174,7 +186,7 @@ export function buildOpenClawRecentTransactionsResponse(
         amount: transaction.amount,
         category: transaction.category,
         date: transaction.date,
-        merchant: transaction.merchant,
+        merchant: merchantName(transaction),
         reimbursement: {
           outstandingAmount: reimbursement.outstandingAmount,
           state: reimbursement.state
@@ -203,8 +215,8 @@ export function buildOpenClawReviewItemsResponse(
       amount: item.transaction.amount,
       category: item.transaction.category,
       date: item.transaction.date,
-      explanation: item.explanation,
-      merchant: item.transaction.merchant,
+      explanation: safeDisplayText(item.explanation, "Review item needs attention."),
+      merchant: merchantName(item.transaction),
       reason: item.reason,
       status: item.status,
       transactionId: item.transaction.id
@@ -245,7 +257,7 @@ export function buildOpenClawReimbursementsResponse(
     amount: transaction.amount,
     date: transaction.date,
     expectedAmount: reimbursement.expectedAmount,
-    merchant: transaction.merchant,
+    merchant: merchantName(transaction),
     outstandingAmount: reimbursement.outstandingAmount,
     receivedAmount: reimbursement.receivedAmount,
     state: reimbursement.state

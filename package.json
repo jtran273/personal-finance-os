@@ -15,6 +15,7 @@
     "openclaw:clarifications": "tsx scripts/openclaw-clarification-loop.ts",
     "openclaw:clarifications:reply": "tsx scripts/openclaw-clarification-reply.ts",
     "openclaw:plaid-refresh": "tsx scripts/openclaw-plaid-refresh.ts",
+    "ops:preflight": "tsx scripts/production-ops-preflight.ts",
     "plaid:cleanup": "tsx scripts/plaid-cleanup.ts",
     "reimbursement:preflight": "tsx scripts/reimbursement-detector-preflight.ts",
     "typecheck": "tsc --noEmit",

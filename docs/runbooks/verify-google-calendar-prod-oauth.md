@@ -34,6 +34,12 @@ Optional, to exercise the live signals check in the smoke script:
 
 ## 2. Run the production smoke check
 
+Start with the consolidated local/env-shape preflight:
+
+```bash
+npm run ops:preflight
+```
+
 With the production Calendar env loaded:
 
 ```bash
@@ -52,6 +58,9 @@ set — asserts the live `calendarContext` only exposes the bounded fields
 (`all_day`, `end`, `locationCity`, `start`, `suspected_category`, `title`) and no
 attendee emails, descriptions, raw Google payloads, tokens, or secrets. It never
 prints secret values.
+
+If `ops:preflight` reports `BLOCKED` for #112, stop there. The remaining steps
+need production OAuth configuration and a signed-in browser session.
 
 ## 3. Verify connect/disconnect (acceptance criterion 2)
 

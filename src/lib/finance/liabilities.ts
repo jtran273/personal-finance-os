@@ -170,8 +170,9 @@ function reportingDateMetadata({
   }
 
   if (nextPaymentDueDate) {
+    const estimatedReportingDate = addDays(nextPaymentDueDate, DEFAULT_BILLING_CYCLE_DAYS - DEFAULT_PAYMENT_GRACE_DAYS);
     return {
-      reportingDate: addDays(nextPaymentDueDate, DEFAULT_BILLING_CYCLE_DAYS - DEFAULT_PAYMENT_GRACE_DAYS),
+      reportingDate: nextCycleDate(estimatedReportingDate, asOfDate),
       reportingDateConfidence: "low",
       reportingDateSource: "estimated_from_due_date"
     };

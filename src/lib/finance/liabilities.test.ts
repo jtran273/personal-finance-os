@@ -232,6 +232,30 @@ test("buildLiabilitiesDueSummary falls back to a weaker reporting estimate from 
   assert.equal(row?.reportingDateConfidence, "low");
 });
 
+test("buildLiabilitiesDueSummary advances stale due-date reporting estimates", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-stale-due-date",
+        type: "credit",
+        balance: 300,
+        creditLimit: 1200,
+        nextPaymentDueDate: "2026-05-01"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: []
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.estimatedDueDate, "2026-05-01");
+  assert.equal(row?.reportingDate, "2026-06-05");
+  assert.equal(row?.reportingDateSource, "estimated_from_due_date");
+  assert.equal(row?.reportingDateConfidence, "low");
+  assert.equal(row?.status, "overdue", "due-date safety should still use the stale due date");
+});
+
 test("buildLiabilitiesDueSummary keeps due-date fallback when Plaid liabilities are unavailable", () => {
   const summary = buildLiabilitiesDueSummary({
     accounts: [

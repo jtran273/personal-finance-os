@@ -3,6 +3,9 @@ import { getOpenAiSuggestionModel, isOpenAiSuggestionConfigured } from "../src/l
 import { isOpenAiAutoReviewEnabled } from "../src/lib/ai/server";
 import {
   resolveProactiveScanEnabled,
+  resolveProactiveScanHistoricalLookbackDays,
+  resolveProactiveScanHistoricalMaxCandidates,
+  resolveProactiveScanHistoricalMaxTransactions,
   resolveProactiveScanMaxTransactions,
   resolveProactiveScanUserId
 } from "../src/lib/agents/proactive-scan";
@@ -31,6 +34,9 @@ function main() {
   const model = openAiConfigured ? getOpenAiSuggestionModel() : null;
   const scanEnabled = resolveProactiveScanEnabled();
   const maxTransactions = resolveProactiveScanMaxTransactions();
+  const historicalMaxTransactions = resolveProactiveScanHistoricalMaxTransactions();
+  const historicalMaxCandidates = resolveProactiveScanHistoricalMaxCandidates();
+  const historicalLookbackDays = resolveProactiveScanHistoricalLookbackDays();
   const scanUserId = resolveProactiveScanUserId();
   const serviceRoleSet = present("SUPABASE_SERVICE_ROLE_KEY");
   const cronSecretSet = present("CRON_SECRET");
@@ -41,6 +47,9 @@ function main() {
     { label: "OPENAI_MODEL (effective)", value: model ?? "n/a (provider not configured)", warn: !model },
     { label: "PROACTIVE_SCAN_ENABLED", value: scanEnabled ? "true" : "false", warn: !scanEnabled },
     { label: "PROACTIVE_SCAN_MAX_TX (effective cap)", value: String(maxTransactions) },
+    { label: "PROACTIVE_SCAN_HISTORY_MAX_TX (effective cap)", value: String(historicalMaxTransactions) },
+    { label: "PROACTIVE_SCAN_HISTORY_MAX_CANDIDATES (effective AI/proposal cap)", value: String(historicalMaxCandidates) },
+    { label: "PROACTIVE_SCAN_HISTORY_LOOKBACK_DAYS (effective window)", value: String(historicalLookbackDays) },
     { label: "Scan user id (PROACTIVE_SCAN_USER_ID / OPENCLAW_USER_ID)", value: scanUserId ? "set" : "MISSING", warn: !scanUserId },
     { label: "SUPABASE_SERVICE_ROLE_KEY", value: serviceRoleSet ? "set" : "MISSING", warn: !serviceRoleSet },
     { label: "CRON_SECRET (guards scheduled route)", value: cronSecretSet ? "set" : "MISSING", warn: !cronSecretSet }

@@ -16,6 +16,9 @@ and caps). What remains is production activation and a real-data quality review.
 | `OPENAI_MODEL` | Model id used for suggestions | `gpt-5-nano` |
 | `PROACTIVE_SCAN_ENABLED` | Enables the proactive scan path | off (`false`) |
 | `PROACTIVE_SCAN_MAX_TX` | Per-run transaction cap | `100` |
+| `PROACTIVE_SCAN_HISTORY_MAX_TX` | Historical backfill transaction cap | `750` |
+| `PROACTIVE_SCAN_HISTORY_MAX_CANDIDATES` | Historical backfill proposal/AI cap | `50` |
+| `PROACTIVE_SCAN_HISTORY_LOOKBACK_DAYS` | Historical backfill lookback window | `730` |
 | `PROACTIVE_SCAN_USER_ID` (or `OPENCLAW_USER_ID`) | Account the scan runs for | none (required) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Lets the scheduled job bypass RLS | none (required) |
 | `CRON_SECRET` | Bearer guard for the scheduled route | none (route refuses without it) |
@@ -65,6 +68,16 @@ curl -sS -X POST "https://<prod-host>/api/agents/proactive-scan/scheduled" \
 Expected (acceptance criterion 2): it creates safe `reimbursement_candidate`
 proposals with **no** raw Plaid payloads, provider ids, tokens, or unnecessary
 PII. Inspect a few of the created proposals to confirm.
+
+To run a one-off historical backfill, use the same guarded route with
+`mode=historical`. This expands the lookback, includes disconnected account
+history, and uses the separate historical candidate cap so old transactions can
+enter the agent review flow without directly mutating finalized finance state:
+
+```bash
+curl -sS -X POST "https://<prod-host>/api/agents/proactive-scan/scheduled?mode=historical" \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
 
 ## 4. Review quality against real transactions (acceptance criteria 3–4)
 

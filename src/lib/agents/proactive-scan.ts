@@ -24,7 +24,10 @@ export interface ProactiveScanResult {
   createdProposalCount: number;
   errorCode: "detector_failed" | null;
   fromDate: string;
+  includeDisconnectedAccounts: boolean;
+  maxCandidateProposals: number;
   maxTransactions: number;
+  mode: ProactiveScanMode;
   openAiAutoReviewEnabled: boolean;
   scannedTransactionCount: number;
   status: "disabled" | "failed" | "succeeded";
@@ -32,6 +35,8 @@ export interface ProactiveScanResult {
   suggestionProviderVersion: string | null;
   toDate: string;
 }
+
+export type ProactiveScanMode = "recent" | "historical_backfill";
 
 type ProactiveScanSuggestionService = Pick<TransactionSuggestionService, "suggestReimbursementCandidate"> & {
   readonly adapter?: {
@@ -72,6 +77,9 @@ export class ProactiveScanConfigurationError extends Error {
 }
 
 const DEFAULT_MAX_TRANSACTIONS = 100;
+const DEFAULT_HISTORICAL_BACKFILL_MAX_TRANSACTIONS = 750;
+const DEFAULT_HISTORICAL_BACKFILL_MAX_CANDIDATES = 50;
+const DEFAULT_HISTORICAL_BACKFILL_LOOKBACK_DAYS = 730;
 const EXPENSE_LOOKBACK_DAYS = 45;
 const INFLOW_PRE_EXPENSE_LOOKBACK_DAYS = 2;
 
@@ -114,6 +122,24 @@ export function resolveProactiveScanMaxTransactions(value = process.env.PROACTIV
   return parsePositiveInteger(value, DEFAULT_MAX_TRANSACTIONS);
 }
 
+export function resolveProactiveScanHistoricalMaxTransactions(
+  value = process.env.PROACTIVE_SCAN_HISTORY_MAX_TX
+) {
+  return parsePositiveInteger(value, DEFAULT_HISTORICAL_BACKFILL_MAX_TRANSACTIONS);
+}
+
+export function resolveProactiveScanHistoricalMaxCandidates(
+  value = process.env.PROACTIVE_SCAN_HISTORY_MAX_CANDIDATES
+) {
+  return parsePositiveInteger(value, DEFAULT_HISTORICAL_BACKFILL_MAX_CANDIDATES);
+}
+
+export function resolveProactiveScanHistoricalLookbackDays(
+  value = process.env.PROACTIVE_SCAN_HISTORY_LOOKBACK_DAYS
+) {
+  return parsePositiveInteger(value, DEFAULT_HISTORICAL_BACKFILL_LOOKBACK_DAYS);
+}
+
 export function resolveProactiveScanEnabled(value = process.env.PROACTIVE_SCAN_ENABLED) {
   return enabledEnvFlag(value);
 }
@@ -122,9 +148,9 @@ export function resolveProactiveScanUserId() {
   return process.env.PROACTIVE_SCAN_USER_ID?.trim() || process.env.OPENCLAW_USER_ID?.trim() || null;
 }
 
-export function proactiveScanWindow(now = new Date()) {
+export function proactiveScanWindow(now = new Date(), lookbackDays = EXPENSE_LOOKBACK_DAYS) {
   const toDate = isoDate(now);
-  const fromDate = addDays(toDate, -EXPENSE_LOOKBACK_DAYS);
+  const fromDate = addDays(toDate, -lookbackDays);
   return {
     fromDate,
     inflowFromDate: addDays(fromDate, -INFLOW_PRE_EXPENSE_LOOKBACK_DAYS),
@@ -167,17 +193,27 @@ function suggestionProviderMetadata(suggestionService: ProactiveScanSuggestionSe
 }
 
 export function createDisabledProactiveScanResult(options: {
+  includeDisconnectedAccounts?: boolean;
+  lookbackDays?: number;
+  maxCandidateProposals?: number;
   maxTransactions?: number;
+  mode?: ProactiveScanMode;
   now?: Date;
 } = {}): ProactiveScanResult {
+  const mode = options.mode ?? "recent";
   const maxTransactions = options.maxTransactions ?? resolveProactiveScanMaxTransactions();
-  const { fromDate, toDate } = proactiveScanWindow(options.now ?? new Date());
+  const maxCandidateProposals = options.maxCandidateProposals ?? maxTransactions;
+  const includeDisconnectedAccounts = options.includeDisconnectedAccounts ?? false;
+  const { fromDate, toDate } = proactiveScanWindow(options.now ?? new Date(), options.lookbackDays);
 
   return {
     createdProposalCount: 0,
     errorCode: null,
     fromDate,
+    includeDisconnectedAccounts,
+    maxCandidateProposals,
     maxTransactions,
+    mode,
     openAiAutoReviewEnabled: isOpenAiAutoReviewEnabled(),
     scannedTransactionCount: 0,
     status: "disabled",
@@ -191,14 +227,21 @@ export async function runProactiveReimbursementScan(
   client: FinanceSupabaseClient,
   userId: string,
   options: {
+    includeDisconnectedAccounts?: boolean;
+    lookbackDays?: number;
+    maxCandidateProposals?: number;
     maxTransactions?: number;
+    mode?: ProactiveScanMode;
     now?: Date;
   } = {},
   dependencies: ProactiveScanDependencies = {}
 ): Promise<ProactiveScanResult> {
   const now = options.now ?? new Date();
+  const mode = options.mode ?? "recent";
   const maxTransactions = options.maxTransactions ?? resolveProactiveScanMaxTransactions();
-  const { fromDate, inflowFromDate, toDate } = proactiveScanWindow(now);
+  const maxCandidateProposals = options.maxCandidateProposals ?? maxTransactions;
+  const includeDisconnectedAccounts = options.includeDisconnectedAccounts ?? mode === "historical_backfill";
+  const { fromDate, inflowFromDate, toDate } = proactiveScanWindow(now, options.lookbackDays);
   const loadTransactions = dependencies.listTransactions ?? listTransactions;
   const loadProposals = dependencies.listAgentProposals ?? listAgentProposals;
   const createProposals = dependencies.createDetectedReimbursementCandidateProposals ??
@@ -212,6 +255,7 @@ export async function runProactiveReimbursementScan(
   const [transactions, inflows, existingProposals] = await Promise.all([
     loadTransactions(client, userId, {
       fromDate,
+      includeDisconnectedAccounts,
       intent: "personal",
       limit: maxTransactions,
       recurring: false,
@@ -219,6 +263,7 @@ export async function runProactiveReimbursementScan(
     }),
     loadTransactions(client, userId, {
       fromDate: inflowFromDate,
+      includeDisconnectedAccounts,
       limit: Math.max(maxTransactions, maxTransactions * 3),
       toDate
     }),
@@ -234,7 +279,7 @@ export async function runProactiveReimbursementScan(
       createProposals(client, userId, {
         existingProposals,
         inflows,
-        maxCandidates: maxTransactions,
+        maxCandidates: maxCandidateProposals,
         now,
         suggestionService,
         transactions
@@ -242,7 +287,7 @@ export async function runProactiveReimbursementScan(
       createMatchProposals(client, userId, {
         existingProposals,
         inflows,
-        maxProposals: maxTransactions,
+        maxProposals: maxCandidateProposals,
         now,
         transactions
       } satisfies PersistReimbursementMatchProposalInput)
@@ -254,7 +299,10 @@ export async function runProactiveReimbursementScan(
       createdProposalCount: 0,
       errorCode: "detector_failed",
       fromDate,
+      includeDisconnectedAccounts,
+      maxCandidateProposals,
       maxTransactions,
+      mode,
       ...providerMetadata,
       scannedTransactionCount: transactions.length,
       status: "failed",
@@ -271,6 +319,7 @@ export async function runProactiveReimbursementScan(
       entityTable: "agent_proposals",
       metadata: {
         fromDate,
+        mode,
         source: "agents_proactive_scan",
         toDate
       }
@@ -281,7 +330,10 @@ export async function runProactiveReimbursementScan(
     createdProposalCount: created.length,
     errorCode: null,
     fromDate,
+    includeDisconnectedAccounts,
+    maxCandidateProposals,
     maxTransactions,
+    mode,
     ...providerMetadata,
     scannedTransactionCount: transactions.length,
     status: "succeeded",

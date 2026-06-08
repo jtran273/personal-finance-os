@@ -87,6 +87,42 @@
   gap: 10px;
 }
 
+.scanPanel {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 14px;
+  background: var(--surface);
+}
+
+.scanPanel span {
+  display: inline-flex;
+  color: var(--muted);
+  font-size: var(--text-label);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scanPanel h2 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.scanPanel .inlineError,
+.scanPanel .inlineSuccess {
+  grid-column: 1 / -1;
+}
+
 .reviewGroup {
   display: flex;
   min-width: 0;
@@ -677,6 +713,15 @@
 }
 
 @media (max-width: 760px) {
+  .scanPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .scanPanel form,
+  .scanPanel .secondaryButton {
+    width: 100%;
+  }
+
   .reviewCardHead {
     grid-template-columns: 1fr;
   }

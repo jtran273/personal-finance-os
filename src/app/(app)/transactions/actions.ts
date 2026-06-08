@@ -34,6 +34,7 @@ import {
 } from "@/lib/finance/classification";
 import { isReimbursementManualStatus } from "@/lib/finance/reimbursement-linking";
 import { isUnmatchedReimbursementIncome } from "@/lib/finance/reimbursements";
+import { addPendingRecurringExpenseFromTransaction } from "@/lib/recurring";
 import { isManualTransactionEditResolvableReview } from "@/lib/review/reasons";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -763,9 +764,24 @@ export async function updateTransactionAction(
       ].filter((field): field is "confidence" | "reviewedAt" => Boolean(field)))
       : [];
     const auditFields = [...changedFields, ...trustFields];
+    const shouldAddPendingRecurringExpense = !before.is_recurring && isRecurring && before.amount < 0;
 
     if (changedFields.length > 0 || shouldMarkTrusted) {
       await updateTransactionEnrichment(financeClient, user.id, transactionId, transactionPatch);
+
+      if (shouldAddPendingRecurringExpense) {
+        await addPendingRecurringExpenseFromTransaction(
+          financeClient,
+          user.id,
+          {
+            ...before,
+            category_id: categoryId,
+            merchant_name: merchantName,
+            user_id: user.id
+          },
+          { actorId: user.id }
+        );
+      }
 
       const beforeData = pickFields(transactionSnapshot(before), auditFields);
       const afterData = pickFields(transactionPatch, auditFields);
@@ -799,6 +815,7 @@ export async function updateTransactionAction(
     }
 
     revalidatePath("/dashboard");
+    revalidatePath("/recurring");
     revalidatePath("/review");
     revalidatePath("/transactions");
     revalidatePath(`/transactions/${transactionId}`);

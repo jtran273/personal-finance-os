@@ -143,6 +143,7 @@ function TrackedTable({
                   {isActionable ? (
                     <RecurringCandidateActions
                       candidateId={candidate?.id}
+                      expense={expense}
                       isDemo={isDemo}
                       merchant={expense.merchant}
                       recurringExpenseId={expense.id}

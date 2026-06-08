@@ -1,4 +1,4 @@
-import type { TransactionRecord } from "@/lib/db";
+import type { ReimbursementRecord, ReviewReason, ReviewStatus, TransactionIntent, TransactionRecord, TransactionSplitRecord } from "@/lib/db";
 import { excludeMatchedRefundReversalTransactions } from "./refund-reversals";
 import { hasOpenReview, transactionSpendingAmount } from "./spending";
 
@@ -33,6 +33,13 @@ export interface BudgetGuardrailSummary {
   nearCount: number;
   items: BudgetGuardrailItem[];
 }
+
+export type BudgetGuardrailTransactionInput = Pick<TransactionRecord, "amount" | "category" | "categoryId" | "date" | "id" | "merchant" | "plaidName" | "reviewStatus"> & {
+  intent: TransactionIntent;
+  reimbursements: readonly Pick<ReimbursementRecord, "receivedAmount" | "receivedTransactionId" | "status">[];
+  reviewItems: readonly { reason: ReviewReason; status: ReviewStatus }[];
+  splits: readonly Pick<TransactionSplitRecord, "amount" | "intent">[];
+};
 
 interface MutableGuardrailGroup {
   id: string | null;
@@ -91,7 +98,7 @@ function guardrailStatus(currentAmount: number, projectedAmount: number, budgetA
 }
 
 export function buildBudgetGuardrailSummary(
-  transactions: readonly TransactionRecord[],
+  transactions: readonly BudgetGuardrailTransactionInput[],
   options: {
     asOfDate?: string;
     baselineMonths?: number;

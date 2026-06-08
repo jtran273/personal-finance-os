@@ -184,26 +184,37 @@ function utilizationGuidance(summary: LiabilitiesDueSummary): CreditHealthGuidan
 }
 
 function paymentHistoryGuidance(summary: LiabilitiesDueSummary): CreditHealthGuidance {
+  const cardsWithBalances = summary.rows.filter((row) => row.amountOwed > 0);
+  const cardsMissingDueDates = cardsWithBalances.filter((row) => !row.estimatedDueDate).length;
+
   if (summary.hasOverdue) {
     return {
       confidence: "high",
-      reason: "At least one connected card has an actual due date that is past due.",
-      title: "Payment-history safety comes before score optimization."
+      reason: "A connected card has an issuer due date that is past due. Pay now to protect payment history.",
+      title: "Clear the past-due card first."
     };
   }
 
   if (summary.hasDueSoon) {
     return {
       confidence: "high",
-      reason: "At least one connected card has an actual due date within the next week.",
-      title: "Handle due-soon minimums before reported-balance targets."
+      reason: "A connected card has an issuer due date within the next week. Pay at least the issuer minimum first.",
+      title: "Handle the due-soon minimum first."
+    };
+  }
+
+  if (cardsMissingDueDates > 0) {
+    return {
+      confidence: "low",
+      reason: `${cardsMissingDueDates} card${cardsMissingDueDates === 1 ? " is" : "s are"} missing issuer due-date data from the current connection.`,
+      title: "Confirm issuer due dates outside Tally for now."
     };
   }
 
   return {
     confidence: "medium",
-    reason: "No overdue or due-soon connected card is visible in the liability summary.",
-    title: "No immediate payment-history risk is visible."
+    reason: "No overdue or due-soon card is visible in connected liability data.",
+    title: "No immediate due-date risk is visible."
   };
 }
 

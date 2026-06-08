@@ -220,7 +220,7 @@ function GuidanceList({ summary }: { summary: CreditHealthSummary }) {
     <section className={styles.guidancePanel} aria-label="Credit health guidance">
       <div className={styles.sectionHeader}>
         <span className={styles.eyebrow}>Connected-account guidance</span>
-        <h2>Use liabilities for actions, not score prediction</h2>
+        <h2>What your connected cards suggest</h2>
       </div>
       <div className={styles.guidanceList}>
         {summary.guidance.map((item) => (
@@ -230,7 +230,6 @@ function GuidanceList({ summary }: { summary: CreditHealthSummary }) {
               <strong>{item.title}</strong>
             </div>
             <p>{item.reason}</p>
-            <span>{item.confidence} confidence</span>
           </article>
         ))}
       </div>

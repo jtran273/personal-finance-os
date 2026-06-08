@@ -192,9 +192,9 @@ Accepted AI cleanups and review-page manual edits can upsert reusable merchant r
 
 ## Recurring Flow
 
-`src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Confirmed and pending rows feed the recurring page timeline; dashboard cashflow summaries remain future work.
+`src/lib/recurring/detector.ts` scans persisted transactions for repeated merchants, amounts, and date cadence. Candidates can be confirmed or dismissed from `/recurring`. Manually added rows are saved directly, and checking Recurring on an expense transaction creates a pending monthly row that can be adjusted before confirmation. Confirmed and pending rows feed recurring review surfaces; dashboard cashflow summaries remain future work.
 
-`src/lib/finance/cashflow.ts` also builds the upcoming cashflow calendar as a pure calculation. Confirmed and pending recurring rows produce scheduled bill events, while recurring posted positive transactions produce projected income events when their history has a deterministic cadence. `/recurring` displays only app-owned merchant, amount, date, cadence, and account-derived cash totals; Plaid provider ids and raw payloads are not part of the timeline model.
+`src/lib/finance/cashflow.ts` also builds upcoming cashflow projections as a pure calculation. Confirmed and pending recurring rows produce scheduled bill events, while recurring posted positive transactions produce projected income events when their history has a deterministic cadence. `/recurring` displays only app-owned merchant, amount, date, cadence, and account-derived cash totals; Plaid provider ids and raw payloads are not part of the recurring model.
 
 ## Dashboard Calculations
 

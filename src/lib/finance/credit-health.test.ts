@@ -175,7 +175,7 @@ test("buildCreditHealthSummary prioritizes payment safety and utilization guidan
 
   assert.equal(health.score.current, null);
   assert.equal(health.score.liveProvider, "none");
-  assert.match(health.guidance[0]?.title ?? "", /due-soon minimums/i);
+  assert.match(health.guidance[0]?.title ?? "", /due-soon minimum/i);
   assert.match(health.guidance[1]?.title ?? "", /highest-utilization card/i);
   assert.equal(health.guidance[1]?.confidence, "high");
 });

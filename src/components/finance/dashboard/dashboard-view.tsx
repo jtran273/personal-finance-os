@@ -15,12 +15,10 @@ import type {
 } from "@/lib/finance/balances";
 import { accountGroupLabel, friendlyAccountLabel } from "@/lib/finance/account-display";
 import { displayCategoryName } from "@/lib/finance/classification";
+import { buildBudgetGuardrailSummary, type BudgetGuardrailItem } from "@/lib/finance/budget-guardrails";
 import {
-  reportedBalanceActionReason,
   type LiabilitiesDueSummary,
-  type LiabilityAccountSummary,
-  type LiabilityTargetPaymentAction,
-  type LiabilityUtilizationTarget
+  type LiabilityAccountSummary
 } from "@/lib/finance/liabilities";
 import {
   excludeMatchedRefundReversalTransactions,
@@ -29,11 +27,13 @@ import {
 import {
   hasOpenReview,
   transactionSpendingAmount,
-  type CategoryBreakdownSummary,
-  type SpendingReportingMode
+  type CategoryBreakdownSummary
 } from "@/lib/finance/spending";
 import { LinkButton, Notice } from "@/components/ui/primitives";
 import {
+  AlertTriangle,
+  ArrowRight,
+  CheckCircle2,
   Clock3,
   Database,
   Landmark,
@@ -87,6 +87,7 @@ type DashboardBalanceScope = "cash" | "cashMinusLiabilities" | "netWorth";
 type TrendRangeKey = "1W" | "1M" | "3M" | "6M" | "1Y" | "ALL";
 type ActivityMode = "after" | "before" | "point";
 type CategoryViewMode = "trend" | "month";
+type CategoryFocusMode = "top" | "rising" | "watch" | "review";
 
 interface BalanceViewOption {
   description: string;
@@ -156,6 +157,10 @@ function formatAxisMoney(value: number, scaleRange: number) {
 function formatSignedMoney(value: number) {
   if (value === 0) return formatMoney(0);
   return `${value > 0 ? "+" : "-"}${formatMoney(Math.abs(value))}`;
+}
+
+function formatApproxMoney(value: number) {
+  return axisMoneyFormatter.format(Math.round(value));
 }
 
 function formatDate(value: string) {
@@ -343,32 +348,11 @@ function transactionIncludedInScope(
   return accountIncludedInScope(accountTypeById.get(transaction.accountId), scope);
 }
 
-function cardDueLabel(row: LiabilityAccountSummary) {
-  if (row.amountOwed <= 0) return "No payment due";
-  if (!row.estimatedDueDate) return "Due date unknown";
+const UTILIZATION_ACTION_PERCENT = 30;
 
-  const prefix = row.dueDateIsActual ? "Due" : "Est. due";
-  if (row.daysUntilDue !== null && row.daysUntilDue < 0) {
-    return `${prefix} ${formatDate(row.estimatedDueDate)} - overdue`;
-  }
-
-  if (row.daysUntilDue === 0) return `${prefix} today`;
-  if (row.daysUntilDue === 1) return `${prefix} tomorrow`;
-  if (row.daysUntilDue !== null) return `${prefix} in ${row.daysUntilDue}d`;
-
-  return `${prefix} ${formatDate(row.estimatedDueDate)}`;
-}
-
-function cardPaymentAction(row: LiabilityAccountSummary) {
-  if (row.amountOwed <= 0) return "No payoff action needed right now.";
-
-  const minimumPayment = row.minimumPaymentAmount && row.minimumPaymentAmount > 0
-    ? `minimum ${formatMoney(row.minimumPaymentAmount)}`
-    : "minimum";
-
-  if (row.status === "overdue") return `Pay today: at least the ${minimumPayment}, full balance if cash allows.`;
-  if (row.status === "due-soon") return `Pay by ${row.estimatedDueDate ? formatDate(row.estimatedDueDate) : "the due date"}: at least the ${minimumPayment}.`;
-  return `Schedule at least the ${minimumPayment}; pay more if utilization is high.`;
+interface CardPaydown {
+  amount: number;
+  targetPercent: number;
 }
 
 function cardMinimumPaymentAmount(row: LiabilityAccountSummary) {
@@ -379,127 +363,109 @@ function cardMinimumPaymentAmount(row: LiabilityAccountSummary) {
   return row.amountOwed;
 }
 
-function cardRecommendedPayment(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
-  if (row.amountOwed <= 0) return 0;
+function cardUtilizationPaydown(row: LiabilityAccountSummary): CardPaydown | null {
+  if (row.amountOwed <= 0) return null;
+  if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) return null;
+  if (row.utilizationPercent < UTILIZATION_ACTION_PERCENT) return null;
 
-  const minimumPayment = cardMinimumPaymentAmount(row);
+  const targetPercent = UTILIZATION_ACTION_PERCENT;
+  const targetBalance = Math.max(0, (row.creditLimit * targetPercent) / 100 - 0.01);
+  const amount = roundMoney(Math.max(0, row.amountOwed - targetBalance));
+  if (amount <= 0) return null;
 
-  if (summary.coverageDelta >= 0) return row.amountOwed;
-  if (row.status === "overdue" || row.status === "due-soon") return minimumPayment;
-
-  if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) {
-    return minimumPayment;
-  }
-
-  if (row.utilizationPercent >= 30) {
-    return Math.min(row.amountOwed, Math.max(minimumPayment, row.amountOwed - row.creditLimit * 0.3));
-  }
-
-  if (row.utilizationPercent >= 10) {
-    return Math.min(row.amountOwed, Math.max(minimumPayment, row.amountOwed - row.creditLimit * 0.1));
-  }
-
-  return minimumPayment;
+  return { amount, targetPercent };
 }
 
-function cardTargetPaymentAction(
-  row: LiabilityAccountSummary,
-  summary: LiabilitiesDueSummary,
-  target: LiabilityUtilizationTarget = 30
-) {
-  return summary.targetPaymentPlans
-    .find((plan) => plan.targetUtilizationPercent === target)
-    ?.actions.find((action) => action.accountId === row.accountId) ?? null;
+function cardStatementTiming(row: LiabilityAccountSummary) {
+  if (row.reportingDate && row.reportingDateConfidence !== "unknown") {
+    return `by ${formatDate(row.reportingDate)}`;
+  }
+  return "before the next statement closes";
 }
 
-function cardTargetCashCopy(action: LiabilityTargetPaymentAction) {
-  if (action.cashShortfall <= 0) {
-    return "Available cash covers this target.";
-  }
-  if (action.recommendedPayment > 0) {
-    return `${formatMoney(action.recommendedPayment)} fits above the cash buffer; ${formatMoney(action.cashShortfall)} more would reach the target.`;
-  }
-  return "Cash buffer leaves no room for this target right now.";
-}
-
-function cardPrimaryAction(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
-  if (row.amountOwed <= 0) return "No payment action needed right now.";
-
-  const payment = cardRecommendedPayment(row, summary);
-  const paymentCopy = payment > 0 ? formatMoney(payment) : "a payment";
-  const coverageCopy = payment > 0 && payment <= summary.cashAvailable
-    ? "Cash covers this action."
-    : payment > summary.cashAvailable
-      ? `Cash is short by ${formatMoney(payment - Math.max(0, summary.cashAvailable))} for this action.`
-      : "";
+function cardActionLine(row: LiabilityAccountSummary) {
+  if (row.amountOwed <= 0) return "Paid in full.";
 
   if (row.status === "overdue") {
-    return `Pay ${paymentCopy} today. ${coverageCopy}`.trim();
+    return `Past due - pay at least ${formatApproxMoney(cardMinimumPaymentAmount(row))} now.`;
   }
 
   if (row.status === "due-soon") {
-    const dueCopy = row.estimatedDueDate ? ` by ${formatDate(row.estimatedDueDate)}` : " by the due date";
-    return `Pay ${paymentCopy}${dueCopy}. ${coverageCopy}`.trim();
+    const dueCopy = row.estimatedDueDate ? `by ${formatDate(row.estimatedDueDate)}` : "by the issuer due date";
+    return `Due soon - pay at least ${formatApproxMoney(cardMinimumPaymentAmount(row))} ${dueCopy}.`;
   }
 
-  const targetAction = cardTargetPaymentAction(row, summary, 30);
-  if (targetAction) {
-    return `Pay about ${formatMoney(targetAction.amountToTarget)} by ${formatDate(targetAction.payByDate)} to move the likely reported balance under ${targetAction.targetUtilizationPercent}%. ${cardTargetCashCopy(targetAction)}`;
+  const paydown = cardUtilizationPaydown(row);
+  if (paydown) {
+    return `Pay ${formatApproxMoney(paydown.amount)} ${cardStatementTiming(row)} to drop under ${paydown.targetPercent}%.`;
   }
 
-  if (row.utilizationPercent !== null && row.creditLimit && row.creditLimit > 0) {
-    if (summary.coverageDelta >= 0) {
-      return `Cash can clear this card; pay ${paymentCopy} if you want the balance gone.`;
-    }
+  if (row.utilizationPercent === null || !row.creditLimit || row.creditLimit <= 0) {
+    return "Credit limit missing; utilization is unavailable.";
   }
 
-  return cardPaymentAction(row);
+  if (!row.estimatedDueDate) {
+    return "Under 30%; confirm issuer due date outside Tally.";
+  }
+
+  return "Under 30%; no extra utilization payment flagged.";
 }
 
-function cardDueDetail(row: LiabilityAccountSummary) {
-  if (row.amountOwed <= 0) return "No balance is currently owed.";
-  if (!row.estimatedDueDate) return "Due date is not available from connected data.";
-  const source = row.dueDateIsActual ? "Issuer due date" : "Estimated due date";
-  return `${source}: ${formatDate(row.estimatedDueDate)}.`;
+function cardLimitLine(row: LiabilityAccountSummary) {
+  if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) return null;
+  return `${row.utilizationPercent.toFixed(1)}% of ${formatMoney(row.creditLimit)} limit`;
 }
 
-function cardReportingDateDetail(row: LiabilityAccountSummary) {
-  if (row.amountOwed <= 0) return "Reporting timing is not needed while this card is paid.";
-
-  if (!row.reportingDate) {
-    return "Reporting date unknown; payment due-date safety still applies.";
-  }
-
-  if (row.reportingDateSource === "actual_plaid_liability") {
-    return `Statement date from Plaid: ${formatDate(row.reportingDate)}.`;
-  }
-
-  if (row.reportingDateSource === "inferred_from_statement_cycle") {
-    return `Est. next statement date: ${formatDate(row.reportingDate)} from last Plaid statement date.`;
-  }
-
-  return `Estimated statement timing from due date: ${formatDate(row.reportingDate)}.`;
+interface LeadAction {
+  accountId: string;
+  detail: string;
+  headline: string;
+  tone: "urgent" | "action";
 }
 
-function cardUtilizationDetail(row: LiabilityAccountSummary, summary: LiabilitiesDueSummary) {
-  if (!row.creditLimit || row.creditLimit <= 0 || row.utilizationPercent === null) {
-    return "Credit limit is not reported, so utilization is not ranked for this card.";
+function pickLeadAction(summary: LiabilitiesDueSummary): LeadAction | null {
+  const owing = summary.rows.filter((row) => row.amountOwed > 0);
+
+  const overdue = owing.find((row) => row.status === "overdue");
+  if (overdue) {
+    return {
+      accountId: overdue.accountId,
+      detail: "This due date comes from connected liability data. Payment history beats every utilization move.",
+      headline: `Pay ${formatApproxMoney(cardMinimumPaymentAmount(overdue))} to ${overdue.name} now`,
+      tone: "urgent"
+    };
   }
 
-  const utilization = `${row.utilizationPercent.toFixed(1)}% of ${formatMoney(row.creditLimit)}`;
-  if (row.utilizationPercent >= 30) {
-    const action = cardTargetPaymentAction(row, summary, 30);
-    return action
-      ? `${utilization} limit. ${reportedBalanceActionReason(action)} Target payment: ${formatMoney(action.amountToTarget)} by ${formatDate(action.payByDate)}.`
-      : `${utilization} limit. Reporting timing is not reliable enough for a precise target payment.`;
+  const dueSoon = owing.find((row) => row.status === "due-soon");
+  if (dueSoon) {
+    return {
+      accountId: dueSoon.accountId,
+      detail: "This due date comes from connected liability data. Pay the issuer minimum first, then consider extra principal.",
+      headline: `Pay ${formatApproxMoney(cardMinimumPaymentAmount(dueSoon))} to ${dueSoon.name}${dueSoon.estimatedDueDate ? ` by ${formatDate(dueSoon.estimatedDueDate)}` : ""}`,
+      tone: "action"
+    };
   }
-  if (row.utilizationPercent >= 10) {
-    const action = cardTargetPaymentAction(row, summary, 10);
-    return action
-      ? `${utilization} limit. ${reportedBalanceActionReason(action)} Target payment: ${formatMoney(action.amountToTarget)} by ${formatDate(action.payByDate)}.`
-      : `${utilization} limit. Reporting timing is not reliable enough for a precise target payment.`;
+
+  const top = owing
+    .map((row) => ({ paydown: cardUtilizationPaydown(row), row }))
+    .filter((entry): entry is { paydown: CardPaydown; row: LiabilityAccountSummary } =>
+      entry.paydown !== null)
+    .sort((a, b) => (b.row.utilizationPercent ?? 0) - (a.row.utilizationPercent ?? 0))[0];
+
+  if (top) {
+    const { paydown, row } = top;
+    const cashNote = paydown.amount <= summary.cashAvailable
+      ? "Your cash covers it."
+      : `Cash covers about ${formatApproxMoney(Math.max(0, summary.cashAvailable))} of it.`;
+    return {
+      accountId: row.accountId,
+      detail: `Drops it from ${row.utilizationPercent?.toFixed(0)}% to under ${paydown.targetPercent}%. ${cashNote}`,
+      headline: `Pay ${formatApproxMoney(paydown.amount)} to ${row.name} ${cardStatementTiming(row)}`,
+      tone: "action"
+    };
   }
-  return `${utilization} limit.`;
+
+  return null;
 }
 
 function cardStatusClass(row: LiabilityAccountSummary) {
@@ -537,10 +503,9 @@ function sortTransactionsByDate(transactions: DashboardBalanceTransaction[]) {
 }
 
 function dashboardTransactionSpendingAmount(
-  transaction: DashboardBalanceTransaction,
-  reportingMode: SpendingReportingMode
+  transaction: DashboardBalanceTransaction
 ) {
-  return transactionSpendingAmount(transaction, { reportingMode });
+  return transactionSpendingAmount(transaction);
 }
 
 function TransactionRows({
@@ -1219,8 +1184,7 @@ function buildDashboardCategoryBreakdownForRange(
   fromDate: string,
   toDate: string,
   previousFrom: string,
-  previousTo: string,
-  reportingMode: SpendingReportingMode
+  previousTo: string
 ): CategoryBreakdownSummary {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const currentRows = new Map<string, {
@@ -1236,7 +1200,7 @@ function buildDashboardCategoryBreakdownForRange(
   reportableTransactions.forEach((transaction) => {
     if (transaction.date < previousFrom || transaction.date > toDate) return;
 
-    const amount = dashboardTransactionSpendingAmount(transaction, reportingMode);
+    const amount = dashboardTransactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
     const label = displayCategoryName(transaction.category);
@@ -1284,7 +1248,6 @@ function buildDashboardCategoryBreakdownForRange(
 function buildDashboardCategoryBreakdownsByMonth(
   transactions: readonly DashboardBalanceTransaction[],
   asOfDate: string,
-  reportingMode: SpendingReportingMode,
   monthCount = 6
 ) {
   const results: CategoryBreakdownSummary[] = [];
@@ -1296,8 +1259,7 @@ function buildDashboardCategoryBreakdownsByMonth(
       bounds.fromDate,
       offset === 0 ? asOfDate : bounds.toDate,
       bounds.previousFrom,
-      bounds.previousTo,
-      reportingMode
+      bounds.previousTo
     ));
   }
 
@@ -1307,8 +1269,7 @@ function buildDashboardCategoryBreakdownsByMonth(
 function categoryRangeBounds(
   transactions: readonly DashboardBalanceTransaction[],
   rangeKey: TrendRangeKey,
-  anchorDate: string,
-  reportingMode: SpendingReportingMode
+  anchorDate: string
 ) {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const range = rangeOptionForKey(rangeKey);
@@ -1321,7 +1282,7 @@ function categoryRangeBounds(
 
   const firstTransactionDate = reportableTransactions.reduce<string | null>(
     (earliest, transaction) => {
-      if (dashboardTransactionSpendingAmount(transaction, reportingMode) <= 0) return earliest;
+      if (dashboardTransactionSpendingAmount(transaction) <= 0) return earliest;
       return earliest === null || transaction.date < earliest ? transaction.date : earliest;
     },
     null
@@ -1336,8 +1297,7 @@ function categoryRangeBounds(
 function buildCategoryTrend(
   transactions: readonly DashboardBalanceTransaction[],
   fromDate: string,
-  toDate: string,
-  reportingMode: SpendingReportingMode
+  toDate: string
 ) {
   const reportableTransactions = excludeMatchedRefundReversalTransactions(transactions);
   const grouped = new Map<string, {
@@ -1359,7 +1319,7 @@ function buildCategoryTrend(
   reportableTransactions.forEach((transaction) => {
     if (transaction.date < fromDate || transaction.date > toDate) return;
 
-    const amount = dashboardTransactionSpendingAmount(transaction, reportingMode);
+    const amount = dashboardTransactionSpendingAmount(transaction);
     if (amount <= 0) return;
 
     const label = displayCategoryName(transaction.category);
@@ -1428,6 +1388,65 @@ function buildCategoryTrend(
     totalAmount,
     totalCount
   };
+}
+
+function budgetGuardrailByCategory(items: readonly BudgetGuardrailItem[]) {
+  return new Map(items.map((item) => [displayCategoryName(item.label), item]));
+}
+
+function budgetStatusRank(status: BudgetGuardrailItem["status"]) {
+  if (status === "over") return 0;
+  if (status === "near") return 1;
+  return 2;
+}
+
+function budgetStatusCopy(item: BudgetGuardrailItem) {
+  if (item.status === "over") return `Over usual by ${formatMoney(Math.abs(item.remainingAmount))}`;
+  if (item.status === "near") return `${formatMoney(Math.max(0, item.remainingAmount))} before usual pace`;
+  return "On usual pace";
+}
+
+function focusCategoryRows(
+  rows: readonly CategoryBreakdownSummary["rows"][number][],
+  focusMode: CategoryFocusMode,
+  guardrailsByCategory: ReadonlyMap<string, BudgetGuardrailItem>
+) {
+  if (focusMode === "rising") {
+    return rows
+      .filter((row) => row.deltaAmount > 0)
+      .sort((left, right) => right.deltaAmount - left.deltaAmount || right.amount - left.amount || left.label.localeCompare(right.label));
+  }
+
+  if (focusMode === "watch") {
+    return rows
+      .filter((row) => {
+        const guardrail = guardrailsByCategory.get(row.label);
+        return guardrail?.status === "over" || guardrail?.status === "near";
+      })
+      .sort((left, right) => {
+        const leftGuardrail = guardrailsByCategory.get(left.label);
+        const rightGuardrail = guardrailsByCategory.get(right.label);
+        return budgetStatusRank(leftGuardrail?.status ?? "on-track") - budgetStatusRank(rightGuardrail?.status ?? "on-track") ||
+          (rightGuardrail?.projectedPercent ?? 0) - (leftGuardrail?.projectedPercent ?? 0) ||
+          right.amount - left.amount ||
+          left.label.localeCompare(right.label);
+      });
+  }
+
+  if (focusMode === "review") {
+    return rows
+      .filter((row) => row.openReviewCount > 0)
+      .sort((left, right) => right.openReviewCount - left.openReviewCount || right.amount - left.amount || left.label.localeCompare(right.label));
+  }
+
+  return [...rows];
+}
+
+function categoryFocusEmptyCopy(focusMode: CategoryFocusMode, monthLabel: string) {
+  if (focusMode === "rising") return `No categories are up versus the previous month for ${monthLabel}.`;
+  if (focusMode === "watch") return `No category is near or over its usual monthly pace for ${monthLabel}.`;
+  if (focusMode === "review") return `No category spending needs review for ${monthLabel}.`;
+  return `No spending recorded for ${monthLabel}.`;
 }
 
 function CashInflowsPanel({
@@ -1556,21 +1575,28 @@ function CategorySpendingPanel({
   transactions: DashboardBalanceTransaction[];
 }) {
   const [viewMode, setViewMode] = useState<CategoryViewMode>("month");
-  const [reportingMode, setReportingMode] = useState<SpendingReportingMode>("net-after-reimbursement");
+  const [focusMode, setFocusMode] = useState<CategoryFocusMode>("top");
   const [monthIndex, setMonthIndex] = useState(0);
   const breakdowns = useMemo(
-    () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate, reportingMode),
-    [asOfDate, reportingMode, transactions]
+    () => buildDashboardCategoryBreakdownsByMonth(transactions, asOfDate),
+    [asOfDate, transactions]
   );
   const { fromDate, toDate } = useMemo(
-    () => categoryRangeBounds(transactions, rangeKey, asOfDate, reportingMode),
-    [asOfDate, rangeKey, reportingMode, transactions]
+    () => categoryRangeBounds(transactions, rangeKey, asOfDate),
+    [asOfDate, rangeKey, transactions]
   );
   const trend = useMemo(
-    () => buildCategoryTrend(transactions, fromDate, toDate, reportingMode),
-    [fromDate, reportingMode, toDate, transactions]
+    () => buildCategoryTrend(transactions, fromDate, toDate),
+    [fromDate, toDate, transactions]
   );
-  const reportingLabel = reportingMode === "gross" ? "Gross" : "Net after reimbursements";
+  const guardrails = useMemo(
+    () => buildBudgetGuardrailSummary(transactions, { asOfDate }),
+    [asOfDate, transactions]
+  );
+  const guardrailsByCategory = useMemo(
+    () => budgetGuardrailByCategory(guardrails.items),
+    [guardrails.items]
+  );
   const width = 560;
   const height = 220;
   const padding = { bottom: 28, left: 34, right: 18, top: 16 };
@@ -1593,7 +1619,11 @@ function CategorySpendingPanel({
   const safeMonthIndex = Math.min(Math.max(0, monthIndex), Math.max(0, breakdowns.length - 1));
   const breakdown = breakdowns[safeMonthIndex] ?? { fromDate: "", rows: [], toDate: "", totalAmount: 0 };
   const monthRows = breakdown.rows;
-  const maxMonthAmount = monthRows[0]?.amount ?? 0;
+  const focusedMonthRows = useMemo(
+    () => focusCategoryRows(monthRows, focusMode, guardrailsByCategory),
+    [focusMode, guardrailsByCategory, monthRows]
+  );
+  const maxMonthAmount = Math.max(0, ...focusedMonthRows.map((row) => row.amount));
   const monthLabel = breakdown.fromDate ? formatMonthLabel(breakdown.fromDate) : "Month";
   const monthPeriodLabel = breakdown.fromDate
     ? safeMonthIndex === 0
@@ -1602,12 +1632,11 @@ function CategorySpendingPanel({
     : "No monthly period";
   const panelAmount = viewMode === "trend" ? trend.totalAmount : breakdown.totalAmount;
   const panelSubtitle = viewMode === "trend"
-    ? `${reportingLabel} - ${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
-    : `${reportingLabel} - ${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"}`;
-  const basisParam = reportingMode === "gross" ? "gross" : undefined;
+    ? `${rangeLabel} - ${formatDate(fromDate)} to ${formatDate(toDate)} - ${trend.totalCount} ${trend.totalCount === 1 ? "transaction" : "transactions"}${trend.pendingAmount > 0 ? ` - ${formatMoney(trend.pendingAmount)} pending` : ""}`
+    : `${monthLabel} - ${monthPeriodLabel} - ${monthRows.length} ${monthRows.length === 1 ? "category" : "categories"} - reimbursements applied`;
   const openTransactionsHref = viewMode === "trend"
-    ? transactionsHref({ basis: basisParam, direction: "spending", exclude_transfers: true, from: fromDate, to: toDate })
-    : transactionsHref({ basis: basisParam, direction: "spending", exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
+    ? transactionsHref({ direction: "spending", exclude_transfers: true, from: fromDate, to: toDate })
+    : transactionsHref({ direction: "spending", exclude_transfers: true, from: breakdown.fromDate, to: breakdown.toDate });
 
   return (
     <section aria-label="Spending by category" className={styles.categoryPanel}>
@@ -1618,24 +1647,6 @@ function CategorySpendingPanel({
           <p className={styles.categorySubtitle}>{panelSubtitle}</p>
         </div>
         <div className={styles.categoryPanelActions}>
-          <div className={styles.categoryModeControls} aria-label="Spending reporting basis">
-            <button
-              aria-pressed={reportingMode === "net-after-reimbursement"}
-              className={reportingMode === "net-after-reimbursement" ? styles.categoryModeActive : undefined}
-              onClick={() => setReportingMode("net-after-reimbursement")}
-              type="button"
-            >
-              Net
-            </button>
-            <button
-              aria-pressed={reportingMode === "gross"}
-              className={reportingMode === "gross" ? styles.categoryModeActive : undefined}
-              onClick={() => setReportingMode("gross")}
-              type="button"
-            >
-              Gross
-            </button>
-          </div>
           <div className={styles.categoryModeControls} aria-label="Category spending view">
             <button
               aria-pressed={viewMode === "month"}
@@ -1735,7 +1746,6 @@ function CategorySpendingPanel({
                   className={styles.categoryRow}
                   href={transactionsHref({
                     category: row.id ?? undefined,
-                    basis: basisParam,
                     direction: "spending",
                     exclude_transfers: true,
                     from: fromDate,
@@ -1771,6 +1781,41 @@ function CategorySpendingPanel({
         </>
       ) : (
         <>
+          <div className={styles.categoryRangeControls} aria-label="Category focus">
+            <button
+              aria-pressed={focusMode === "top"}
+              className={focusMode === "top" ? styles.categoryRangeActive : undefined}
+              onClick={() => setFocusMode("top")}
+              type="button"
+            >
+              Top
+            </button>
+            <button
+              aria-pressed={focusMode === "rising"}
+              className={focusMode === "rising" ? styles.categoryRangeActive : undefined}
+              onClick={() => setFocusMode("rising")}
+              type="button"
+            >
+              Rising
+            </button>
+            <button
+              aria-pressed={focusMode === "watch"}
+              className={focusMode === "watch" ? styles.categoryRangeActive : undefined}
+              onClick={() => setFocusMode("watch")}
+              type="button"
+            >
+              Watch
+            </button>
+            <button
+              aria-pressed={focusMode === "review"}
+              className={focusMode === "review" ? styles.categoryRangeActive : undefined}
+              onClick={() => setFocusMode("review")}
+              type="button"
+            >
+              Review
+            </button>
+          </div>
+
           <div className={styles.categoryMonthPicker} aria-label="Month">
             {breakdowns.map((option, index) => (
               <button
@@ -1785,22 +1830,27 @@ function CategorySpendingPanel({
             ))}
           </div>
 
-          {monthRows.length === 0 ? (
-            <div className={styles.categoryEmpty}>No spending recorded for {monthLabel}.</div>
+          {focusedMonthRows.length === 0 ? (
+            <div className={styles.categoryEmpty}>{categoryFocusEmptyCopy(focusMode, monthLabel)}</div>
           ) : (
             <div className={styles.categoryRows}>
-              {monthRows.map((row) => {
+              {focusedMonthRows.map((row) => {
                 const widthPercent = maxMonthAmount > 0 ? Math.max(2, (row.amount / maxMonthAmount) * 100) : 0;
                 const deltaTone = row.deltaAmount > 0 ? styles.negative : row.deltaAmount < 0 ? styles.positive : undefined;
                 const deltaLabel = row.previousAmount > 0
                   ? `${formatSignedMoney(row.deltaAmount)} (${formatPercentDelta(row.deltaPercent)})`
                   : "New this month";
+                const guardrail = guardrailsByCategory.get(row.label);
+                const rightMeta = focusMode === "watch" && guardrail
+                  ? budgetStatusCopy(guardrail)
+                  : focusMode === "review" && row.openReviewCount > 0
+                    ? `${row.openReviewCount} open ${row.openReviewCount === 1 ? "review" : "reviews"}`
+                    : deltaLabel;
                 return (
                   <Link
                     className={styles.categoryRow}
                     href={transactionsHref({
                       category: row.id ?? undefined,
-                      basis: basisParam,
                       direction: "spending",
                       exclude_transfers: true,
                       from: breakdown.fromDate,
@@ -1821,7 +1871,7 @@ function CategorySpendingPanel({
                       <span>
                         {row.percent.toFixed(1)}% - {row.count} {row.count === 1 ? "transaction" : "transactions"}
                       </span>
-                      <span className={deltaTone}>{deltaLabel}</span>
+                      <span className={focusMode === "watch" ? undefined : deltaTone}>{rightMeta}</span>
                     </div>
                   </Link>
                 );
@@ -2013,98 +2063,122 @@ function CashAccountsPanel({ accounts }: { accounts: readonly AccountRecord[] })
 function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) {
   if (summary.rows.length === 0) return null;
 
+  const activeRows = summary.rows.filter((row) => row.amountOwed > 0);
+  const paidRows = summary.rows.filter((row) => row.amountOwed <= 0);
+
   const practicalRowLimit = 6;
-  const visibleRows = summary.rows.length <= practicalRowLimit ? summary.rows : summary.rows.slice(0, practicalRowLimit);
-  const coverageTone = summary.coverageDelta < 0 ? styles.liabilityOverdue : styles.liabilityPaid;
-  const coverageCopy = summary.coverageDelta < 0
-    ? `Cash is short by ${formatMoney(Math.abs(summary.coverageDelta))} if you paid every card today.`
-    : `Cash covers card balances with ${formatMoney(summary.coverageDelta)} left.`;
+  const visibleActive = activeRows.slice(0, practicalRowLimit);
+  const hiddenCount = activeRows.length - visibleActive.length;
+
+  const lead = pickLeadAction(summary);
+  const activeMissingDueDates = activeRows.filter((row) => !row.estimatedDueDate).length;
   const utilizationCopy = summary.aggregateUtilizationPercent === null || summary.highestIndividualUtilizationPercent === null
-    ? "Utilization needs reported credit limits."
-    : `Aggregate utilization ${summary.aggregateUtilizationPercent.toFixed(1)}%; highest card ${summary.highestIndividualUtilizationPercent.toFixed(1)}%.`;
-  const target30ActionCount = summary.targetPaymentPlans
-    .find((plan) => plan.targetUtilizationPercent === 30)
-    ?.actions.length ?? 0;
-  const reportingCopy = target30ActionCount > 0
-    ? `${target30ActionCount} card${target30ActionCount === 1 ? "" : "s"} with estimated reported-balance targets.`
-    : "No precise reported-balance target is available right now.";
+    ? "Add credit limits to track utilization."
+    : `Overall utilization ${summary.aggregateUtilizationPercent.toFixed(1)}% · highest card ${summary.highestIndividualUtilizationPercent.toFixed(1)}%.`;
+  const calmCopy = activeRows.length === 0
+    ? "All connected cards are paid."
+    : activeMissingDueDates === activeRows.length
+      ? "No utilization paydown is flagged. Due dates are not available in Tally yet, so confirm issuer minimums outside the app."
+      : activeMissingDueDates > 0
+        ? "No utilization paydown is flagged. Some issuer due dates are not available in Tally yet."
+        : "No extra payment is flagged by connected card data right now.";
 
   return (
-    <section aria-label="Credit card actions" className={styles.liabilityPanel}>
+    <section aria-label="Credit card actions" className={styles.liabilityPanel} id="card-actions">
       <div className={styles.liabilityPanelHead}>
         <div>
           <span className={styles.eyebrow}>Card actions</span>
           <h3 className={styles.liabilityHeadline}>{formatMoney(summary.totalOwed)}</h3>
-          <p className={styles.liabilityCoverage}>
-            {summary.hasOverdue
-              ? "Best action first: overdue cards, then cash-covered payments, then utilization."
-              : summary.hasDueSoon
-                ? "Best action first: due-soon cards, then cash-covered payments, then utilization."
-                : "Best action first: cash-covered payments, then utilization."}
-          </p>
+          <p className={styles.cardActionSubhead}>{utilizationCopy}</p>
         </div>
         <div className={styles.liabilityCashBlock}>
-          <span>Cash coverage</span>
-          <strong className={coverageTone}>{formatSignedMoney(summary.coverageDelta)}</strong>
+          <span>Cash available</span>
+          <strong>{formatMoney(summary.cashAvailable)}</strong>
         </div>
       </div>
 
-      <div className={styles.cardActionSummary}>
-        <ShieldCheck size={16} aria-hidden />
-        <span>{coverageCopy} Due dates protect payment history; statement timing may help reported balances. {utilizationCopy} {reportingCopy}</span>
-      </div>
+      {lead ? (
+        <Link
+          className={`${styles.cardLeadAction} ${lead.tone === "urgent" ? styles.cardLeadUrgent : ""}`.trim()}
+          href={transactionsHref({ account: lead.accountId })}
+        >
+          <span className={styles.cardLeadEyebrow}>
+            {lead.tone === "urgent" ? <AlertTriangle size={13} aria-hidden /> : <ArrowRight size={13} aria-hidden />}
+            Do this next
+          </span>
+          <strong>{lead.headline}</strong>
+          <span className={styles.cardLeadDetail}>{lead.detail}</span>
+        </Link>
+      ) : (
+        <div className={styles.cardLeadCalm}>
+          <ShieldCheck size={16} aria-hidden />
+          <span>{calmCopy}</span>
+        </div>
+      )}
 
-      <div className={styles.cardActionGrid}>
-        {visibleRows.map((row, index) => {
-          const utilization = row.utilizationPercent ?? 0;
-          const utilizationWidth = Math.max(0, Math.min(100, utilization));
-          const statusClass = cardStatusClass(row);
+      {visibleActive.length > 0 ? (
+        <div className={styles.cardActionGrid}>
+          {visibleActive.map((row) => {
+            const utilizationWidth = Math.max(0, Math.min(100, row.utilizationPercent ?? 0));
+            const statusClass = cardStatusClass(row);
+            const limitLine = cardLimitLine(row);
+            const isLead = lead?.accountId === row.accountId;
 
-          return (
-            <Link
-              className={styles.cardActionRow}
-              href={transactionsHref({ account: row.accountId })}
-              key={row.accountId}
-            >
-              <div className={styles.cardActionTopline}>
-                <div>
-                  <strong>{row.name}</strong>
-                  <span>{row.institutionName}{row.mask ? ` - ${row.mask}` : ""}</span>
+            return (
+              <Link
+                className={`${styles.cardActionRow} ${isLead ? styles.cardActionRowLead : ""}`.trim()}
+                href={transactionsHref({ account: row.accountId })}
+                key={row.accountId}
+              >
+                <div className={styles.cardActionTopline}>
+                  <div>
+                    <strong>{row.name}</strong>
+                    <span>{row.institutionName}{row.mask ? ` · ${row.mask}` : ""}</span>
+                  </div>
+                  <div className={styles.liabilityRowAmount}>
+                    <strong>{formatMoney(row.amountOwed)}</strong>
+                    <span className={statusClass}>
+                      {row.utilizationPercent === null ? "No limit" : `${row.utilizationPercent.toFixed(1)}%`}
+                    </span>
+                  </div>
                 </div>
-                <div className={styles.liabilityRowAmount}>
-                  <strong>{formatMoney(row.amountOwed)}</strong>
-                  <span className={statusClass}>{cardDueLabel(row)}</span>
-                </div>
-              </div>
 
-              <div className={styles.cardActionGuidance}>
-                <strong className={styles.cardPrimaryAction}>
-                  {index === 0 ? "Best action: " : ""}{cardPrimaryAction(row, summary)}
-                </strong>
-                <span>{cardDueDetail(row)}</span>
-                <span>{cardReportingDateDetail(row)}</span>
-                <span>{cardUtilizationDetail(row, summary)}</span>
-              </div>
+                <strong className={styles.cardPrimaryAction}>{cardActionLine(row)}</strong>
 
-              <div className={styles.cardUtilizationLine}>
-                <span>Utilization</span>
-                <strong className={statusClass}>
-                  {row.utilizationPercent === null ? "Unknown" : `${row.utilizationPercent.toFixed(1)}%`}
-                </strong>
-              </div>
-              <div className={styles.utilizationTrack} aria-hidden>
-                <span style={{ width: `${utilizationWidth}%` }} className={statusClass} />
-              </div>
-            </Link>
-          );
-        })}
-      </div>
+                {limitLine ? (
+                  <div className={styles.cardLimitLine}>
+                    <span>{limitLine}</span>
+                    <div className={styles.utilizationTrack} aria-hidden>
+                      <span style={{ width: `${utilizationWidth}%` }} className={statusClass} />
+                    </div>
+                  </div>
+                ) : null}
+              </Link>
+            );
+          })}
+        </div>
+      ) : null}
 
-      {summary.rows.length > visibleRows.length ? (
+      {paidRows.length > 0 ? (
+        <div className={styles.cardPaidRow}>
+          <CheckCircle2 size={14} aria-hidden />
+          <span>
+            {paidRows.length === 1
+              ? `${paidRows[0].name} is paid · $0`
+              : `${paidRows.length} cards paid · $0`}
+          </span>
+        </div>
+      ) : null}
+
+      {hiddenCount > 0 ? (
         <Link className={styles.cardActionMoreLink} href="/accounts">
-          View {summary.rows.length - visibleRows.length} more cards
+          View {hiddenCount} more {hiddenCount === 1 ? "card" : "cards"}
         </Link>
       ) : null}
+
+      <p className={styles.cardActionFootnote}>
+        Due dates and statement timing appear only when connected liability fields are available. Not a credit-score prediction.
+      </p>
     </section>
   );
 }

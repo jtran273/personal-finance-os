@@ -5,7 +5,6 @@ const DEMO_COOKIE_NAME = "ledger_demo";
 const responsiveRoutes = [
   { path: "/dashboard", heading: "Dashboard" },
   { path: "/transactions", heading: "Transactions" },
-  { path: "/credit-health", heading: "Credit health" },
   { path: "/agent-inbox", heading: "Agent inbox" },
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
@@ -282,6 +281,15 @@ test("demo login opens the seeded finance workspace", async ({ page }) => {
   await expectNoVisibleLegacyBrand(page);
 });
 
+test("legacy credit health route redirects to dashboard card actions", async ({ baseURL, context, page }) => {
+  await enableDemoMode(context, baseURL!);
+  await page.goto("/credit-health");
+
+  await expect(page).toHaveURL(/\/dashboard#card-actions$/);
+  await expect(page.getByRole("heading", { exact: true, name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Credit card actions" })).toBeVisible();
+});
+
 test("app shell navigation and global search reach the primary workspace routes", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
@@ -296,13 +304,14 @@ test("app shell navigation and global search reach the primary workspace routes"
   const nav = page.getByRole("navigation", { name: "Main navigation" });
   const routes = [
     { heading: "Transactions", label: "Transactions", path: "/transactions" },
-    { heading: "Credit health", label: "Credit health", path: "/credit-health" },
     { heading: "Review queue", label: "Review", path: "/review" },
     { heading: "Recurring", label: "Recurring", path: "/recurring" },
     { heading: "Accounts", label: "Accounts", path: "/accounts" },
     { heading: "Settings", label: "Settings", path: "/settings" },
     { heading: "Dashboard", label: "Dashboard", path: "/dashboard" }
   ] as const;
+
+  await expect(nav.getByRole("link", { exact: true, name: "Credit health" })).toHaveCount(0);
 
   for (const route of routes) {
     const link = nav.getByRole("link", { exact: true, name: route.label });
@@ -596,7 +605,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await expect(page.getByText("Transactions in selected period")).toBeVisible();
   const cardActions = page.getByRole("region", { name: "Credit card actions" });
   await expect(cardActions).toBeVisible();
-  await expect(cardActions).toContainText("Utilization");
+  await expect(cardActions).toContainText(/utilization/i);
   await expect(page.getByLabel("Spendable comparison")).toHaveCount(0);
   const selectedTransactionsHref = await page
     .getByLabel("Selected balance transactions")
@@ -610,19 +619,23 @@ test("dashboard trend range controls update the change-over-time view", async ({
   await categoryTrendView.click();
   await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
   await expect(categoryMonthView).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
   const categoryRange = page.getByLabel("Category trend range");
   await expect(categoryRange.getByRole("button", { exact: true, name: "1M" })).toHaveAttribute("aria-pressed", "true");
-  await categoryRange.getByRole("button", { exact: true, name: "3M" }).click();
-  await expect(categoryRange.getByRole("button", { exact: true, name: "3M" })).toHaveAttribute("aria-pressed", "true");
+  await categoryRange.getByRole("button", { exact: true, name: "All" }).click();
+  await expect(categoryRange.getByRole("button", { exact: true, name: "All" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
   await categoryMonthView.click();
   await expect(categoryMonthView).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Month").getByRole("button").first()).toBeVisible();
   await categoryTrendView.click();
   await expect(categoryTrendView).toHaveAttribute("aria-pressed", "true");
+  await categoryRange.getByRole("button", { exact: true, name: "All" }).click();
   await expect(page.locator("svg[aria-label='Category spending trend']")).toBeVisible();
 
   const spendingPanel = page.getByLabel("Spending by category");
+  await expect(spendingPanel.getByRole("button", { exact: true, name: "Net" })).toHaveCount(0);
+  await expect(spendingPanel.getByRole("button", { exact: true, name: "Gross" })).toHaveCount(0);
+  await expect(spendingPanel).not.toContainText("Net after reimbursements");
   await expect(spendingPanel).not.toContainText("trusted");
   await expect(spendingPanel).not.toContainText("in review");
   const spendingTrendLinks = await spendingPanel.getByRole("link").evaluateAll((links) => (
@@ -632,6 +645,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   for (const href of spendingTrendLinks) {
     expect(href).toContain("direction=spending");
     expect(href).toContain("exclude_transfers=1");
+    expect(href).not.toContain("basis=");
   }
 
   await categoryMonthView.click();
@@ -643,6 +657,7 @@ test("dashboard trend range controls update the change-over-time view", async ({
   for (const href of spendingMonthLinks) {
     expect(href).toContain("direction=spending");
     expect(href).toContain("exclude_transfers=1");
+    expect(href).not.toContain("basis=");
   }
 
   await incomeView.click();
@@ -1029,6 +1044,9 @@ test("recurring and accounts pages render focused recurring rows and active acco
   await expect(page.getByText("Demo recurring patterns are read-only")).toBeVisible();
   await expect(page.getByText("Equinox").first()).toBeVisible();
   await expect(page.getByText("Substack").first()).toBeVisible();
+  await page.getByRole("button", { name: /adjust substack recurring details/i }).click();
+  await expect(page.locator("select[name='cadence']")).toContainText("Annual");
+  await expect(page.getByRole("button", { name: /read-only demo/i }).last()).toBeDisabled();
   const recurringReadOnlyButtons = page.getByRole("button", { name: /read-only demo/i });
   if (await recurringReadOnlyButtons.count()) {
     await expect(recurringReadOnlyButtons.first()).toBeDisabled();

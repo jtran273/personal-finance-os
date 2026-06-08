@@ -416,6 +416,7 @@ export function transactionSpendingAmount(
       : 0;
   if (grossSpending <= 0) return 0;
   if (options.reportingMode === "gross") return roundMoney(grossSpending);
+  if (transaction.splits.length > 0) return roundMoney(grossSpending);
 
   const confirmedReimbursements = transaction.reimbursements.reduce((sum, reimbursement) => {
     if (reimbursement.receivedTransactionId && reimbursement.status === "received") {

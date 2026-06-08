@@ -97,6 +97,22 @@ function assertSpendingFixtures(): true {
     throw new Error("Expected reimbursable split amounts to be excluded from spending.");
   }
 
+  const receivedSplitReimbursement = {
+    ...splitTransaction,
+    reimbursements: [reimbursement({
+      expectedAmount: 75,
+      receivedAmount: 75,
+      receivedAt: "2026-05-05",
+      receivedTransactionId: "tx-split-reimbursement",
+      splitId: "covered-for-friends",
+      status: "received"
+    })]
+  };
+
+  if (transactionSpendingAmount(receivedSplitReimbursement) !== 46.35) {
+    throw new Error("Expected received reimbursements not to be subtracted again after reimbursable splits are excluded.");
+  }
+
   if (transactionSplitTotal(splitTransaction) !== 121.35 || transactionSplitRemaining(splitTransaction) !== 0) {
     throw new Error("Expected split allocation to be fully counted in absolute dollars.");
   }

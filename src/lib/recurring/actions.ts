@@ -1,15 +1,20 @@
 import {
+  listRecurringExpenses,
   recordAuditEvent,
   resolveReviewItem,
   updateRecurringExpense,
   updateTransactionEnrichment,
   upsertRecurringExpense,
+  type EnrichedTransactionRow,
   type FinanceSupabaseClient,
-  type Json
+  type Json,
+  type RecurringExpenseRecord
 } from "../db";
+import { calculateNextDueDate, normalizeRecurringMerchant } from "./detector";
 import type {
   BuildConfirmRecurringActionOptions,
   BuildDismissRecurringActionOptions,
+  DetectedRecurringCadence,
   ConfirmRecurringCandidatePayload,
   DismissRecurringCandidatePayload,
   RecurringCandidate,
@@ -20,6 +25,126 @@ import type {
 
 const RECURRING_REVIEW_REASONS = new Set(["new-recurring", "recurring-candidate"]);
 const RECURRING_EXPENSE_CONFLICT_COLUMNS = ["user_id", "merchant_name", "cadence"] as const;
+const DEFAULT_TRANSACTION_RECURRING_CADENCE: DetectedRecurringCadence = "monthly";
+const DEFAULT_TRANSACTION_RECURRING_CONFIDENCE = 0.55;
+
+type RecurringExpenseSeedTransaction = Pick<
+  EnrichedTransactionRow,
+  "account_id" | "amount" | "category_id" | "date" | "id" | "merchant_name" | "user_id"
+>;
+
+interface BuildPendingRecurringFromTransactionOptions {
+  asOfDate?: string;
+  cadence?: DetectedRecurringCadence;
+  confidence?: number;
+}
+
+interface ApplyPendingRecurringFromTransactionOptions extends BuildPendingRecurringFromTransactionOptions {
+  actorId?: string | null;
+}
+
+function roundRecurringAmount(amount: number) {
+  return Math.round(Math.abs(amount) * 100) / 100;
+}
+
+export function findExistingRecurringExpenseForMerchant(
+  merchant: string,
+  existingRecurring: readonly RecurringExpenseRecord[]
+) {
+  const normalizedMerchant = normalizeRecurringMerchant(merchant);
+  if (!normalizedMerchant) return null;
+
+  return existingRecurring.find((expense) =>
+    expense.status !== "dismissed" &&
+    normalizeRecurringMerchant(expense.merchant) === normalizedMerchant
+  ) ?? null;
+}
+
+export function buildPendingRecurringExpenseFromTransactionPayload(
+  transaction: RecurringExpenseSeedTransaction,
+  options: BuildPendingRecurringFromTransactionOptions = {}
+): RecurringExpenseUpsertPayload | null {
+  const merchant = transaction.merchant_name.trim();
+  const amount = roundRecurringAmount(transaction.amount);
+  if (!merchant || transaction.amount >= 0 || amount <= 0) return null;
+
+  const cadence = options.cadence ?? DEFAULT_TRANSACTION_RECURRING_CADENCE;
+  const nextDueDate = calculateNextDueDate(
+    transaction.date,
+    cadence,
+    options.asOfDate ?? new Date().toISOString().slice(0, 10)
+  );
+
+  return {
+    table: "recurring_expenses",
+    conflictColumns: RECURRING_EXPENSE_CONFLICT_COLUMNS,
+    values: {
+      user_id: transaction.user_id,
+      merchant_rule_id: null,
+      category_id: transaction.category_id,
+      account_id: transaction.account_id,
+      last_transaction_id: transaction.id,
+      merchant_name: merchant,
+      amount,
+      cadence,
+      next_due_date: nextDueDate,
+      last_charge_date: transaction.date,
+      last_amount: amount,
+      status: "pending",
+      is_new: true,
+      confidence: options.confidence ?? DEFAULT_TRANSACTION_RECURRING_CONFIDENCE
+    }
+  };
+}
+
+export async function addPendingRecurringExpenseFromTransaction(
+  client: FinanceSupabaseClient,
+  userId: string,
+  transaction: RecurringExpenseSeedTransaction,
+  options: ApplyPendingRecurringFromTransactionOptions = {}
+) {
+  const payload = buildPendingRecurringExpenseFromTransactionPayload(transaction, options);
+  if (!payload) return null;
+
+  const merchantName = String(payload.values.merchant_name ?? "").trim();
+  if (!merchantName) return null;
+
+  const existingRecurring = await listRecurringExpenses(client, userId, ["active", "pending", "paused"]);
+  const existingMerchant = findExistingRecurringExpenseForMerchant(
+    merchantName,
+    existingRecurring
+  );
+  if (existingMerchant) return null;
+
+  const recurringExpense = await upsertRecurringExpense(
+    client,
+    userId,
+    payload.values,
+    payload.conflictColumns.join(",")
+  );
+
+  await recordAuditEvent(client, userId, {
+    action: "recurring.transaction_flag_added",
+    actorId: options.actorId ?? userId,
+    afterData: {
+      amount: payload.values.amount,
+      cadence: payload.values.cadence,
+      isNew: payload.values.is_new,
+      merchant: merchantName,
+      nextDueDate: payload.values.next_due_date,
+      status: payload.values.status
+    },
+    beforeData: null,
+    entityId: recurringExpense.id,
+    entityTable: payload.table,
+    metadata: {
+      source: "transaction_edit_form",
+      transactionId: transaction.id
+    }
+  });
+
+  return recurringExpense;
+}
 
 function recurringExpensePayload(
   candidate: RecurringCandidate,

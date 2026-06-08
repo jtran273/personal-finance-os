@@ -317,3 +317,67 @@ export async function addRecurringExpenseAction(
     return errorState(error);
   }
 }
+
+export async function updateRecurringExpenseDetailsAction(
+  _state: RecurringActionState,
+  formData: FormData
+): Promise<RecurringActionState> {
+  try {
+    const { client, userId } = await getRecurringContext();
+    const recurringExpenseId = submittedRecurringExpenseId(formData);
+    if (!recurringExpenseId) throw new Error("Recurring row was not found.");
+
+    const recurringExpenses = await listRecurringExpenses(client, userId, [...recurringStatuses]);
+    const expense = findSubmittedRecurringExpense(recurringExpenseId, recurringExpenses);
+    if (!expense || (expense.status !== "pending" && !expense.isNew)) {
+      throw new Error("Only pending recurring rows can be adjusted here.");
+    }
+
+    const merchant = cleanString(formData.get("merchant"), 160);
+    if (!merchant) throw new Error("Enter a merchant name.");
+
+    const amount = parseRecurringAmount(formData.get("amount"));
+    const cadence = parseRecurringCadence(formData.get("cadence"));
+    const lastChargeDate = parseRecurringIsoDate(formData.get("lastChargeDate"), "last charge date");
+    const providedNextDue = cleanString(formData.get("nextDueDate"), 10);
+    const nextDueDate = providedNextDue
+      ? parseRecurringIsoDate(formData.get("nextDueDate"), "next due date")
+      : calculateNextDueDate(lastChargeDate, cadence, new Date().toISOString().slice(0, 10));
+
+    const updated = await updateRecurringExpense(client, userId, expense.id, {
+      amount,
+      cadence,
+      last_amount: amount,
+      last_charge_date: lastChargeDate,
+      merchant_name: merchant,
+      next_due_date: nextDueDate
+    });
+
+    await recordAuditEvent(client, userId, {
+      action: "recurring.pending_adjusted",
+      actorId: userId,
+      afterData: {
+        amount: updated.amount,
+        cadence: updated.cadence,
+        lastChargeDate: updated.last_charge_date,
+        merchant: updated.merchant_name,
+        nextDueDate: updated.next_due_date
+      },
+      beforeData: {
+        amount: expense.amount,
+        cadence: expense.cadence,
+        lastChargeDate: expense.lastChargeDate,
+        merchant: expense.merchant,
+        nextDueDate: expense.nextDueDate
+      },
+      entityId: expense.id,
+      entityTable: "recurring_expenses",
+      metadata: { source: "recurring_pending_adjust" }
+    });
+
+    revalidateRecurringPaths();
+    return { message: `Updated ${merchant}.` };
+  } catch (error) {
+    return errorState(error);
+  }
+}

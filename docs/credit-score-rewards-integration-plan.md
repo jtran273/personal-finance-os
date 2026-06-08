@@ -107,18 +107,19 @@ This first planning slice was deliberately domain-only. It did not add a databas
 
 ## Manual Credit Health MVP
 
-The next safe MVP adds a persisted manual score surface without adding live bureau or rewards providers:
+Superseded UI note: the dashboard is now the normal credit-action surface. `/credit-health` is a legacy redirect to `/dashboard#card-actions` so credit health does not become a second daily-workflow tab. Any future manual score UI should stay secondary or progressively disclosed from the dashboard card-action area.
+
+The safe data model for a future manual score surface remains:
 
 - `credit_score_snapshots` stores user-entered score, source, model, and as-of date.
-- `/credit-health` shows the current manually entered score, source, model, trend, and recent history.
 - If multiple snapshots share an as-of date, the newest saved entry is treated as the current manual snapshot; trend still compares against the most recent prior date, not another entry from the same day.
-- The page uses existing connected-account liabilities for payment-history, utilization, and statement-timing guidance.
-- The page labels that Tally is not connected to a live credit bureau score provider.
+- The dashboard uses existing connected-account liabilities for payment-history, utilization, and statement-timing guidance.
+- Any score surface labels that Tally is not connected to a live credit bureau score provider.
 - Rewards and benefits remain explicit unsupported/deferred data: no points, cashback, miles, reward multipliers, or unused-benefits detection is inferred from Plaid.
 
 ## Product UI Recommendation
 
-When a `/credit-health` page is built, the first viewport should have three compact surfaces:
+When credit-health details are expanded from the dashboard, keep the first viewport compact:
 
 - Score: "Not connected" until manual snapshots exist. If manual snapshots exist, show score, source, model, as-of date, and trend.
 - Utilization: aggregate utilization, highest-card utilization, and the existing best next payment action.

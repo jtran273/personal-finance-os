@@ -156,8 +156,8 @@ Tally supports a lightweight home-screen install through a web app manifest and 
 
 ### Track Recurring Spending
 
-The recurring detector scans imported transactions for repeated merchant, amount, and cadence patterns. Users can confirm or dismiss candidates from `/recurring`.
-The recurring page also builds a deterministic next-30-day cashflow calendar from confirmed or pending recurring rows plus recurring positive transaction history, so upcoming bills, expected income, and projected cash after scheduled activity can be reviewed without exposing provider identifiers.
+The recurring detector scans imported transactions for repeated merchant, amount, and cadence patterns. Users can confirm or dismiss candidates from `/recurring`, add known recurring expenses manually, or mark an expense transaction as Recurring to create a pending monthly row that can be adjusted before confirmation.
+The recurring page keeps confirmed and pending rows separate from raw Plaid payloads, so upcoming fixed expenses can be reviewed without exposing provider identifiers.
 
 ### Export
 
@@ -175,7 +175,7 @@ CSV or manual import workflows are optional backfill tools, not the core reimbur
 | `/transactions/[transactionId]` | Transaction edit page with raw Plaid context |
 | `/agent-inbox` | Derived proposal queue for sanitized finance-agent recommendations from open review items |
 | `/review` | Queue for transactions that need human review, including reimbursable shared-expense context |
-| `/recurring` | Recurring expense candidates, confirmed recurring rows, and the next-30-day cashflow calendar |
+| `/recurring` | Recurring expense candidates, confirmed and pending recurring rows, and manual recurring entry |
 | `/accounts` | Compact account cards with balances, account-filtered transaction links, conditional recent activity, and investment detail; connection health stays in Settings |
 | `/audit` | Advanced sanitized change trail for debugging and data integrity checks |
 | `/settings` | Plaid connection/sync/repair/disconnect controls, Google Calendar read connection, mobile install/notification boundary, and session access |

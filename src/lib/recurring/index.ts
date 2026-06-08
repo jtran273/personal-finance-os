@@ -4,10 +4,13 @@ export {
   normalizeRecurringMerchant
 } from "./detector";
 export {
+  addPendingRecurringExpenseFromTransaction,
   applyConfirmRecurringPayload,
   applyDismissRecurringPayload,
+  buildPendingRecurringExpenseFromTransactionPayload,
   buildConfirmRecurringPayload,
-  buildDismissRecurringPayload
+  buildDismissRecurringPayload,
+  findExistingRecurringExpenseForMerchant
 } from "./actions";
 export type {
   BuildConfirmRecurringActionOptions,

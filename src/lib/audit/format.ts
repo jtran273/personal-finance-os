@@ -119,6 +119,8 @@ const ACTION_LABELS: Record<string, string> = {
   "recurring.candidate_confirmed": "Recurring candidate confirmed",
   "recurring.candidate_dismissed": "Recurring candidate dismissed",
   "recurring.manual_added": "Recurring expense added manually",
+  "recurring.pending_adjusted": "Recurring expense adjusted",
+  "recurring.transaction_flag_added": "Recurring expense added from transaction",
   "reimbursement.inflow_linked": "Reimbursement linked",
   "reimbursement.inflow_unlinked": "Reimbursement unlinked",
   "reimbursement.status_changed": "Reimbursement status changed",

@@ -359,6 +359,25 @@
   margin-top: 8px;
 }
 
+.adjustForm {
+  display: grid;
+  flex-basis: 100%;
+  grid-template-columns: minmax(160px, 1.4fr) minmax(100px, 0.8fr) minmax(120px, 0.8fr) minmax(130px, 0.9fr) minmax(130px, 0.9fr);
+  gap: 8px;
+  align-items: end;
+  margin-top: 2px;
+  padding: 10px;
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+
+.adjustActions {
+  display: flex;
+  min-width: 0;
+  gap: 7px;
+}
+
 .primaryButton,
 .secondaryButton {
   display: inline-flex;
@@ -517,6 +536,10 @@
 
   .panelHead h2 {
     font-size: 22px;
+  }
+
+  .adjustForm {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

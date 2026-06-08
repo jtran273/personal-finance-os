@@ -42,10 +42,21 @@ import {
 } from "@/lib/review/suggestions";
 import { loadRecentUserCorrections } from "@/lib/review/user-corrections";
 import { getFinanceServerContext } from "@/lib/demo/server";
+import {
+  resolveProactiveScanHistoricalLookbackDays,
+  resolveProactiveScanHistoricalMaxCandidates,
+  resolveProactiveScanHistoricalMaxTransactions,
+  runProactiveReimbursementScan
+} from "@/lib/agents/proactive-scan";
 
 export interface ReviewActionState {
   error?: string;
   message?: string;
+}
+
+export interface HistoricalReimbursementScanActionState extends ReviewActionState {
+  createdProposalCount?: number;
+  scannedTransactionCount?: number;
 }
 
 interface ParsedSplit {
@@ -469,6 +480,41 @@ export async function acceptReviewSuggestionAction(
       message: result.merchantRuleId
         ? "Suggestion accepted and merchant rule saved for future matching."
         : "Suggestion accepted."
+    };
+  } catch (error) {
+    return errorState(error);
+  }
+}
+
+export async function runHistoricalReimbursementScanAction(
+  _state: HistoricalReimbursementScanActionState
+): Promise<HistoricalReimbursementScanActionState> {
+  try {
+    const context = await getWritableFinanceContext("scan historical reimbursements for");
+    const maxTransactions = resolveProactiveScanHistoricalMaxTransactions();
+    const maxCandidateProposals = resolveProactiveScanHistoricalMaxCandidates();
+    const lookbackDays = resolveProactiveScanHistoricalLookbackDays();
+    const scan = await runProactiveReimbursementScan(context.client, context.userId, {
+      includeDisconnectedAccounts: true,
+      lookbackDays,
+      maxCandidateProposals,
+      maxTransactions,
+      mode: "historical_backfill"
+    });
+
+    if (scan.status === "failed") {
+      return { error: "Historical reimbursement scan failed before creating proposals." };
+    }
+
+    revalidatePath("/agent-inbox");
+    revalidatePath("/dashboard");
+    revalidatePath("/review");
+    revalidatePath("/transactions");
+
+    return {
+      createdProposalCount: scan.createdProposalCount,
+      message: `Historical scan checked ${scan.scannedTransactionCount.toLocaleString("en-US")} transactions and queued ${scan.createdProposalCount.toLocaleString("en-US")} proposal${scan.createdProposalCount === 1 ? "" : "s"}.`,
+      scannedTransactionCount: scan.scannedTransactionCount
     };
   } catch (error) {
     return errorState(error);

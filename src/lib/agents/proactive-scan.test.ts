@@ -9,6 +9,9 @@ import {
   createProactiveScanSuggestionService,
   proactiveScanWindow,
   resolveProactiveScanEnabled,
+  resolveProactiveScanHistoricalLookbackDays,
+  resolveProactiveScanHistoricalMaxCandidates,
+  resolveProactiveScanHistoricalMaxTransactions,
   resolveProactiveScanMaxTransactions,
   runProactiveReimbursementScan
 } from "./proactive-scan";
@@ -105,6 +108,14 @@ test("proactive scan window covers late-arriving reimbursement inflows", () => {
   });
 });
 
+test("historical proactive scan window can cover older transactions", () => {
+  assert.deepEqual(proactiveScanWindow(now, 365), {
+    fromDate: "2025-05-13",
+    inflowFromDate: "2025-05-11",
+    toDate: "2026-05-13"
+  });
+});
+
 test("proactive scan respects the configured transaction cap", async () => {
   const calls: TransactionListFilters[] = [];
   const transactions = [
@@ -129,9 +140,51 @@ test("proactive scan respects the configured transaction cap", async () => {
 
   assert.equal(result.scannedTransactionCount, 2);
   assert.equal(result.maxTransactions, 2);
+  assert.equal(result.maxCandidateProposals, 2);
+  assert.equal(result.mode, "recent");
+  assert.equal(result.includeDisconnectedAccounts, false);
   assert.equal(calls[0]?.limit, 2);
   assert.equal(calls[0]?.intent, "personal");
   assert.equal(calls[0]?.fromDate, "2026-03-29");
+});
+
+test("historical proactive scan includes old/disconnected transactions with a separate proposal cap", async () => {
+  const calls: TransactionListFilters[] = [];
+
+  const result = await runProactiveReimbursementScan(client, userId, {
+    lookbackDays: 365,
+    maxCandidateProposals: 8,
+    maxTransactions: 300,
+    mode: "historical_backfill",
+    now
+  }, {
+    createDetectedReimbursementCandidateProposals: async (_client, _userId, input: PersistReimbursementCandidateInput) => {
+      assert.equal(input.maxCandidates, 8);
+      return [];
+    },
+    createReimbursementMatchProposals: async (_client, _userId, input) => {
+      assert.equal(input.maxProposals, 8);
+      return [];
+    },
+    createSuggestionService: suggestionService,
+    listAgentProposals: async () => [],
+    listTransactions: async (_client, _userId, filters = {}) => {
+      calls.push(filters);
+      return [];
+    },
+    recordAuditEvent: async () => ({})
+  });
+
+  assert.equal(result.mode, "historical_backfill");
+  assert.equal(result.maxTransactions, 300);
+  assert.equal(result.maxCandidateProposals, 8);
+  assert.equal(result.includeDisconnectedAccounts, true);
+  assert.equal(result.fromDate, "2025-05-13");
+  assert.equal(calls[0]?.includeDisconnectedAccounts, true);
+  assert.equal(calls[0]?.fromDate, "2025-05-13");
+  assert.equal(calls[0]?.limit, 300);
+  assert.equal(calls[1]?.includeDisconnectedAccounts, true);
+  assert.equal(calls[1]?.fromDate, "2025-05-11");
 });
 
 test("proactive scan rerun passes existing proposals so detector stays idempotent", async () => {
@@ -202,6 +255,16 @@ test("proactive scan max transaction env parser falls back and clamps", () => {
   assert.equal(resolveProactiveScanMaxTransactions("not-a-number"), 100);
 });
 
+test("historical proactive scan env parsers fall back and clamp", () => {
+  assert.equal(resolveProactiveScanHistoricalMaxTransactions(undefined), 750);
+  assert.equal(resolveProactiveScanHistoricalMaxTransactions("2500"), 2500);
+  assert.equal(resolveProactiveScanHistoricalMaxTransactions("0"), 1);
+  assert.equal(resolveProactiveScanHistoricalMaxCandidates(undefined), 50);
+  assert.equal(resolveProactiveScanHistoricalMaxCandidates("12.4"), 12);
+  assert.equal(resolveProactiveScanHistoricalLookbackDays(undefined), 730);
+  assert.equal(resolveProactiveScanHistoricalLookbackDays("365"), 365);
+});
+
 test("proactive scan requires an explicit enable flag", () => {
   assert.equal(resolveProactiveScanEnabled(undefined), false);
   assert.equal(resolveProactiveScanEnabled(""), false);
@@ -224,7 +287,10 @@ test("disabled proactive scan result exposes only safe operational metadata", ()
       createdProposalCount: 0,
       errorCode: null,
       fromDate: "2026-03-29",
+      includeDisconnectedAccounts: false,
+      maxCandidateProposals: 25,
       maxTransactions: 25,
+      mode: "recent",
       openAiAutoReviewEnabled: false,
       scannedTransactionCount: 0,
       status: "disabled",

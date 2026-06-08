@@ -17,6 +17,7 @@ import {
   Sparkles,
   TriangleAlert
 } from "lucide-react";
+import { HistoricalReimbursementScanForm } from "./historical-reimbursement-scan-form";
 import { PeerToPeerSplitForm } from "./peer-to-peer-split-form";
 import { ReviewItemActions } from "./review-item-actions";
 import { ReviewTransactionEditForm } from "./review-transaction-edit-form";
@@ -260,6 +261,10 @@ export function ReviewQueueView({
         <Notice role="alert" tone="error">
           {dataError}
         </Notice>
+      ) : null}
+
+      {canShowQueue ? (
+        <HistoricalReimbursementScanForm isDemo={isDemo} />
       ) : null}
 
       {canShowQueue && bulkCandidates.length > 1 ? (

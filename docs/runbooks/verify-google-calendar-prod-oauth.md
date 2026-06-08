@@ -5,6 +5,11 @@ storage/refresh, Settings connect/disconnect UI, a bounded event reader, the
 redacted upcoming-calendar context, OpenClaw signal inclusion, docs, and tests).
 The remaining work is production OAuth setup and live validation.
 
+Product framing: this is not a generic calendar feature. Calendar data is useful
+only when it changes a finance-facing output such as safe-to-spend pressure,
+OpenClaw budget briefing questions, reimbursement/shared-expense prompts, or
+transaction review context. See `../calendar-aware-finance-context.md`.
+
 > Do not paste OAuth client secrets, tokens, the token encryption key, or raw
 > Google event payloads into issues, PRs, or chat.
 
@@ -79,6 +84,9 @@ Sign in to production with a personal account:
    (e.g. travel, dinner, gift, or wedding).
 3. Re-confirm the bounded-field contract on the live payload (the smoke script's
    signals check does this automatically when configured).
+4. Confirm at least one finance-facing output can use the calendar pressure,
+   such as safe-to-spend explanation copy, an OpenClaw budget briefing question,
+   or a reimbursement/review prompt.
 
 ## 5. Verify clean failure states (acceptance criterion 6)
 

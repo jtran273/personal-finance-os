@@ -18,7 +18,7 @@ See `docs/credit-card-optimization-product-plan.md` for the full product read.
 ### Reliability and operations
 
 - **#236 — Apply production Supabase finance migrations and verify Plaid sync** (P1). Hardening code is merged; production sync can still fail until migrations are applied and verified end-to-end.
-- **#112 — Verify Google Calendar production OAuth and planning signals** (P2). The connector works locally; production verification with a real account is pending.
+- **#112 — Verify Google Calendar production OAuth and planning signals** (P2). Product framing: calendar should be a finance-context layer, not a standalone Tally calendar surface. The connector works locally; production verification with a real account is pending. Next useful build is calendar-aware safe-to-spend / review briefing behavior. See `docs/calendar-aware-finance-context.md`.
 
 ### Agents and AI quality
 

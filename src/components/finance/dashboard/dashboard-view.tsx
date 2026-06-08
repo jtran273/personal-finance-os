@@ -2019,9 +2019,9 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
   const calmCopy = activeRows.length === 0
     ? "All connected cards are paid."
     : activeMissingDueDates === activeRows.length
-      ? "No utilization paydown is flagged. Due dates are not available in Tally yet, so confirm issuer minimums outside the app."
+      ? "No utilization paydown is flagged. These issuers did not report due dates, so confirm minimums outside the app."
       : activeMissingDueDates > 0
-        ? "No utilization paydown is flagged. Some issuer due dates are not available in Tally yet."
+        ? "No utilization paydown is flagged. Some issuers did not report due dates."
         : "No extra payment is flagged by connected card data right now.";
 
   return (
@@ -2123,7 +2123,7 @@ function CreditCardActionPanel({ summary }: { summary: LiabilitiesDueSummary }) 
       ) : null}
 
       <p className={styles.cardActionFootnote}>
-        Due dates and statement timing appear only when connected liability fields are available. Not a credit-score prediction.
+        Due dates and statement timing appear when issuers report them through connected card data. Not a credit-score prediction.
       </p>
     </section>
   );

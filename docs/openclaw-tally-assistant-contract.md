@@ -44,6 +44,14 @@ Context packets contain only app-owned ids and enriched review fields needed for
 
 Context packets explicitly exclude raw provider payloads, provider ids, account numbers, user ids, auth data, database URLs, cookies, tokens, service-role keys, OpenAI keys, and secret-shaped values. The contract module exposes `assertAssistantContextSafe()` for recursive key and value checks before payloads are logged or sent.
 
+## Calendar-Aware Finance Context
+
+Google Calendar context is useful only as finance context. Tally should not become a calendar viewer, and OpenClaw should not store Google tokens or raw event payloads. Tally owns the read-only OAuth connection, encrypted token storage, and the minimized event context. OpenClaw consumes the bounded context to improve safe-to-spend, budget briefings, reimbursement prompts, and review questions.
+
+Calendar context packets should include only bounded planning fields such as redacted title, start/end, all-day flag, city-level location, and suspected finance category. They must exclude attendee emails, descriptions, meeting URLs, full addresses, raw Google payloads, OAuth tokens, and secrets.
+
+See `docs/calendar-aware-finance-context.md` for the product framing and issue #112 acceptance criteria.
+
 ## Suggestion Response
 
 Assistant responses are proposals. Every suggestion has `approvalRequired: true` and must be re-read and validated by Tally before any write.

@@ -10,6 +10,7 @@ import Link from "next/link";
 import {
   hasOnlyAccountFilter,
   transactionFiltersHref,
+  transactionFiltersToSearchParams,
   transactionPeriodTitle,
   type TransactionFilterState
 } from "./filters";
@@ -199,6 +200,7 @@ export function TransactionsView({
         accountOnlyFilter={accountOnlyFilter}
         filtersActive={filters.hasActiveFilters}
         limit={filters.limit}
+        returnQuery={transactionFiltersToSearchParams(filters).toString()}
         selectedAccountIssue={selectedAccountIssue}
         selectedAccount={selectedAccount}
         transactions={transactions}

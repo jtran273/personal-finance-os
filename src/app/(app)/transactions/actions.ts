@@ -658,10 +658,24 @@ export async function updateReimbursementStatusAction(
   }
 }
 
+// Rebuild the transactions list path from the carried filter query string. The
+// "/transactions" prefix is always fixed here, so a tampered value can only ever
+// redirect within the transactions list (no open redirect).
+function transactionsReturnPath(returnTo: string) {
+  if (!returnTo) return "/transactions";
+  try {
+    const query = new URLSearchParams(returnTo).toString();
+    return query ? `/transactions?${query}` : "/transactions";
+  } catch {
+    return "/transactions";
+  }
+}
+
 export async function updateTransactionAction(
   _state: TransactionEditActionState,
   formData: FormData
 ): Promise<TransactionEditActionState> {
+  const returnPath = transactionsReturnPath(cleanString(formData.get("returnTo"), 2000));
   try {
     const context = await getFinanceServerContext();
     if (context.isDemo) return { error: "Demo mode is read-only. Sign in to edit real transactions." };
@@ -792,5 +806,5 @@ export async function updateTransactionAction(
     return errorState(error);
   }
 
-  redirect("/transactions");
+  redirect(returnPath);
 }

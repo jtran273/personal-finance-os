@@ -20,6 +20,7 @@ interface TransactionTableProps {
   accountOnlyFilter: boolean;
   filtersActive: boolean;
   limit: number;
+  returnQuery: string;
   selectedAccountIssue: PlaidConnectionIssue | null;
   selectedAccount: AccountRecord | null;
   transactions: TransactionRecord[];
@@ -236,10 +237,18 @@ export function TransactionTable({
   accountOnlyFilter,
   filtersActive,
   limit,
+  returnQuery,
   selectedAccountIssue,
   selectedAccount,
   transactions
 }: TransactionTableProps) {
+  // Carry the active filters to the edit page so saving can return the user to
+  // the same filtered view instead of an unfiltered transaction list.
+  const editHref = (transactionId: string) =>
+    returnQuery
+      ? `/transactions/${transactionId}?return=${encodeURIComponent(returnQuery)}`
+      : `/transactions/${transactionId}`;
+
   if (transactions.length === 0) {
     return (
       <div className={styles.emptyState} role="status" aria-live="polite">
@@ -302,7 +311,7 @@ export function TransactionTable({
                       <div className={styles.merchantName}>
                         <Link
                           className={styles.merchantEditLink}
-                          href={`/transactions/${transaction.id}`}
+                          href={editHref(transaction.id)}
                           title={`Edit ${transaction.merchant}`}
                         >
                           {transaction.merchant}
@@ -367,7 +376,7 @@ export function TransactionTable({
                             Open review
                           </Link>
                         ) : (
-                          <Link className={styles.categoryActionLink} href={`/transactions/${transaction.id}`}>
+                          <Link className={styles.categoryActionLink} href={editHref(transaction.id)}>
                             Choose category
                           </Link>
                         )

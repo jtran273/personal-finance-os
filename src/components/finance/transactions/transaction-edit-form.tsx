@@ -21,6 +21,7 @@ import styles from "./transactions.module.css";
 interface TransactionEditFormProps {
   categories: CategoryRecord[];
   isDemo: boolean;
+  returnQuery?: string;
   transaction: TransactionRecord;
 }
 
@@ -49,8 +50,9 @@ function reviewStatusLabel(transaction: TransactionRecord) {
   return "No review item";
 }
 
-export function TransactionEditForm({ categories, isDemo, transaction }: TransactionEditFormProps) {
+export function TransactionEditForm({ categories, isDemo, returnQuery, transaction }: TransactionEditFormProps) {
   const [state, formAction, isPending] = useActionState(updateTransactionAction, initialState);
+  const backHref = returnQuery ? `/transactions?${returnQuery}` : "/transactions";
   const categoryGroups = categoryOptionGroups(categories);
   const initialCategoryId = isTransferCategoryName(transaction.category)
     ? "none"
@@ -76,7 +78,7 @@ export function TransactionEditForm({ categories, isDemo, transaction }: Transac
   return (
     <div className={styles.editShell}>
       <div className={styles.editHeader}>
-        <Link className={styles.secondaryButton} href="/transactions">
+        <Link className={styles.secondaryButton} href={backHref}>
           <ArrowLeft size={14} aria-hidden />
           Transactions
         </Link>
@@ -96,6 +98,7 @@ export function TransactionEditForm({ categories, isDemo, transaction }: Transac
           }}
         >
           <input name="transactionId" type="hidden" value={transaction.id} />
+          <input name="returnTo" type="hidden" value={returnQuery ?? ""} />
 
           {isDemo ? (
             <div className={styles.formSuccess} role="status">
@@ -215,7 +218,7 @@ export function TransactionEditForm({ categories, isDemo, transaction }: Transac
               <Save size={14} aria-hidden />
               {isDemo ? "Read-only demo" : isPending ? "Saving..." : canClearReview ? "Save and clear review" : "Save"}
             </button>
-            <Link className={styles.secondaryButton} href="/transactions">
+            <Link className={styles.secondaryButton} href={backHref}>
               Cancel
             </Link>
           </div>

@@ -9,6 +9,7 @@ import type { OpenClawAnomalyPacket } from "@/lib/anomaly/packet";
 import { FinanceDbError, listAccounts, listAnomalyAlerts, listTransactions } from "@/lib/db";
 import { buildAccountLifecycleHints } from "@/lib/finance/account-lifecycle";
 import { calculateAccountTotals } from "@/lib/finance/balances";
+import { buildBudgetGuardrailSummary } from "@/lib/finance/budget-guardrails";
 import { buildLiabilitiesDueSummary } from "@/lib/finance/liabilities";
 import { buildCreditOptimizationPackets } from "@/lib/openclaw/credit-nudges";
 import { buildOpenClawOutboxResponse } from "@/lib/openclaw/outbox";
@@ -97,6 +98,7 @@ export async function GET(request: NextRequest) {
 
     let creditOptimizationPackets: ReturnType<typeof buildCreditOptimizationPackets> = [];
     let lifecycleHints: ReturnType<typeof buildAccountLifecycleHints> = [];
+    let budgetGuardrails: ReturnType<typeof buildBudgetGuardrailSummary> | undefined;
     try {
       const accounts = await listAccounts(client, userId);
       const asOfDate = signals.generatedAt.slice(0, 10);
@@ -120,14 +122,17 @@ export async function GET(request: NextRequest) {
           date: transaction.date
         }))
       });
+      budgetGuardrails = buildBudgetGuardrailSummary(transactions, { asOfDate });
     } catch (error) {
       logSafeError("openclaw_outbox_credit_nudges_failed", error);
       creditOptimizationPackets = [];
       lifecycleHints = [];
+      budgetGuardrails = undefined;
     }
 
     return jsonNoStore(buildOpenClawOutboxResponse(signals, {
       anomalyPackets,
+      budgetGuardrails,
       creditOptimizationPackets,
       lifecycleHints,
       includeBudgetBriefing,

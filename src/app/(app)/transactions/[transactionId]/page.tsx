@@ -22,6 +22,20 @@ interface TransactionEditPageProps {
   params: Promise<{
     transactionId: string;
   }>;
+  searchParams?: Promise<{ return?: string | string[] }>;
+}
+
+// Re-normalize the carried filter query string so only well-formed query params
+// survive. The save action always re-prefixes "/transactions", so this cannot
+// become an open redirect.
+function sanitizeReturnQuery(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw) return "";
+  try {
+    return new URLSearchParams(raw).toString();
+  } catch {
+    return "";
+  }
 }
 
 function errorMessage(error: unknown) {
@@ -72,8 +86,9 @@ function reimbursementLinkOptions(transactions: TransactionRecord[], currentTran
   };
 }
 
-export default async function TransactionEditPage({ params }: TransactionEditPageProps) {
+export default async function TransactionEditPage({ params, searchParams }: TransactionEditPageProps) {
   const { transactionId } = await params;
+  const returnQuery = sanitizeReturnQuery((searchParams ? await searchParams : {}).return);
   let categories: CategoryRecord[] = [];
   let dataError: string | undefined;
   let isConfigured = false;
@@ -138,7 +153,7 @@ export default async function TransactionEditPage({ params }: TransactionEditPag
 
   return (
     <div className={styles.editPageStack}>
-      <TransactionEditForm categories={categories} isDemo={isDemo} transaction={transaction} />
+      <TransactionEditForm categories={categories} isDemo={isDemo} returnQuery={returnQuery} transaction={transaction} />
       <ReimbursementStatusPanel isDemo={isDemo} transaction={transaction} />
       <ReimbursementLinkPanel
         isDemo={isDemo}

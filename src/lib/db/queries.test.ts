@@ -11,6 +11,7 @@ import {
   listAnomalyAlerts,
   listAccounts,
   listReviewItems,
+  listTransactionAccounts,
   listTransactions,
   recordClarificationAnswer,
   replaceTransactionSplitsAndSyncReimbursements,
@@ -583,7 +584,45 @@ test("listAccounts includes errored items and excludes inactive, revoked, and ot
   assert.deepEqual(accounts.map((account) => account.id), ["account-checking", "account-error"]);
 });
 
-test("listTransactions excludes inactive and revoked account rows before applying limits", async () => {
+test("listTransactionAccounts includes preserved historical accounts", async () => {
+  const client = new FakeFinanceClient();
+  client.institutions.push(fixtureInstitution());
+  client.plaidItems.push(
+    fixturePlaidItem(),
+    fixturePlaidItem({
+      id: "plaid-item-revoked",
+      plaid_item_id: "provider-item-revoked",
+      status: "revoked"
+    })
+  );
+  client.accounts.push(
+    fixtureAccount(),
+    {
+      ...fixtureAccount(),
+      id: "account-revoked",
+      name: "Old Checking",
+      plaid_account_id: "plaid-account-revoked",
+      plaid_item_id: "plaid-item-revoked"
+    },
+    {
+      ...fixtureAccount(),
+      id: "account-inactive",
+      is_active: false,
+      name: "Inactive Checking",
+      plaid_account_id: "plaid-account-inactive"
+    }
+  );
+
+  const accounts = await listTransactionAccounts(client.asClient(), userId);
+
+  assert.deepEqual(accounts.map((account) => account.id), [
+    "account-checking",
+    "account-inactive",
+    "account-revoked"
+  ]);
+});
+
+test("listTransactions includes inactive and revoked historical account rows before applying limits", async () => {
   const client = new FakeFinanceClient();
   seedTransactionRows(client);
   client.plaidItems.push(fixturePlaidItem({
@@ -631,7 +670,7 @@ test("listTransactions excludes inactive and revoked account rows before applyin
 
   const transactions = await listTransactions(client.asClient(), userId, { limit: 2 });
 
-  assert.deepEqual(transactions.map((item) => item.id), ["tx-newest", "tx-middle"]);
+  assert.deepEqual(transactions.map((item) => item.id), ["tx-inactive", "tx-revoked"]);
 });
 
 test("listTransactions applies database limits before hydration for simple filters", async () => {

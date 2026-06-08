@@ -6,9 +6,9 @@ import {
 } from "@/components/finance/transactions/filters";
 import { TransactionsView } from "@/components/finance/transactions/transactions-view";
 import {
-  listAccounts,
   listAgentProposals,
   listCategories,
+  listTransactionAccounts,
   listTransactions,
   type AccountRecord,
   type AgentProposalRecord,
@@ -52,7 +52,7 @@ export default async function TransactionsPage({ searchParams }: TransactionsPag
   if (context.client && context.userId) {
     try {
       [accounts, categories, plaidConnections] = await Promise.all([
-        listAccounts(context.client, context.userId),
+        listTransactionAccounts(context.client, context.userId),
         listCategories(context.client, context.userId),
         context.isDemo
           ? Promise.resolve(listDemoPlaidConnections())

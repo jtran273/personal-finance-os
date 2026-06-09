@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug, Wrench, X } from "lucide-react";
+import { AlertCircle, AlertTriangle, CalendarClock, CheckCircle2, Landmark, Plus, RefreshCw, ShieldCheck, Unplug, Wrench, X } from "lucide-react";
 import {
   buildPlaidConnectionsStatusSummary,
   formatPlaidSyncResultMessage,
@@ -24,6 +24,7 @@ interface PlaidConnectionSummary {
   autoSyncEnabled: boolean;
   availableProducts: string[];
   billedProducts: string[];
+  canEnableLiabilities?: boolean;
   consentExpiresAt: string | null;
   createdAt: string;
   errorCode: string | null;
@@ -488,7 +489,7 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
       if (repairConnectionId) {
         const itemId = repairConnectionId;
         setRepairConnectionId(null);
-        setSuccessMessage("Plaid repair completed. Syncing the refreshed connection.");
+        setSuccessMessage("Connection updated. Syncing to refresh balances, transactions, and due dates.");
         void syncConnections(itemId);
         return;
       }
@@ -810,6 +811,18 @@ export function PlaidConnectionPanel({ isDemo = false }: PlaidConnectionPanelPro
                 >
                   <Wrench aria-hidden="true" className={isRepairing ? styles.spin : undefined} size={14} />
                   {isRepairing ? "Opening" : "Repair"}
+                </button>
+              ) : connection.canEnableLiabilities ? (
+                <button
+                  aria-busy={isRepairing}
+                  className={`btn plaid-repair ${styles.repairPrimary}`}
+                  disabled={isDemo || isBusy || isSyncing}
+                  onClick={() => void startPlaidLink(connection)}
+                  title="Grant Plaid permission to read credit-card due dates, minimums, and APRs for this institution."
+                  type="button"
+                >
+                  <CalendarClock aria-hidden="true" className={isRepairing ? styles.spin : undefined} size={14} />
+                  {isRepairing ? "Opening" : "Enable due dates"}
                 </button>
               ) : null}
               {connection.status !== "revoked" ? (

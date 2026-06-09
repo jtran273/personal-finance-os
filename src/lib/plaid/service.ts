@@ -272,6 +272,10 @@ export interface PlaidConnectionSummary {
   autoSyncEnabled: boolean;
   availableProducts: string[];
   billedProducts: string[];
+  // True when this connection has active credit-card accounts that still have no
+  // due date and Liabilities is enabled — i.e. running Link update mode can grant
+  // Liabilities consent and populate due dates without a destructive re-add.
+  canEnableLiabilities: boolean;
   consentExpiresAt: string | null;
   createdAt: string;
   errorCode: string | null;
@@ -366,7 +370,11 @@ export interface PlaidLinkTokenResult {
   requestId: string;
 }
 
-function toConnectionSummary(item: PlaidItemPublicRow, institution?: InstitutionRow): PlaidConnectionSummary {
+function toConnectionSummary(
+  item: PlaidItemPublicRow,
+  institution?: InstitutionRow,
+  options?: { creditAccountsMissingDueDate?: number; liabilitiesEnabled?: boolean }
+): PlaidConnectionSummary {
   const hasServerConfigurationError = isPlaidServerConfigurationErrorCode(item.error_code);
   const status = hasServerConfigurationError && item.status !== "revoked" ? "active" : item.status;
   const errorCode = hasServerConfigurationError ? null : item.error_code;
@@ -381,6 +389,11 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
     autoSyncEnabled: item.auto_sync_enabled,
     availableProducts: item.available_products,
     billedProducts: item.billed_products,
+    canEnableLiabilities: canConnectionEnableLiabilities({
+      creditAccountsMissingDueDate: options?.creditAccountsMissingDueDate ?? 0,
+      liabilitiesEnabled: options?.liabilitiesEnabled ?? false,
+      status
+    }),
     consentExpiresAt: item.consent_expires_at,
     createdAt: item.created_at,
     errorCode,
@@ -393,6 +406,33 @@ function toConnectionSummary(item: PlaidItemPublicRow, institution?: Institution
     status,
     updatedAt: item.updated_at
   };
+}
+
+// A connection can be upgraded to credit-card due dates through Link update mode
+// when Liabilities is enabled and it still has active credit accounts without a
+// due date. The signal is account-based so it self-clears once due dates land.
+export function canConnectionEnableLiabilities({
+  creditAccountsMissingDueDate,
+  liabilitiesEnabled,
+  status
+}: {
+  creditAccountsMissingDueDate: number;
+  liabilitiesEnabled: boolean;
+  status: PlaidItemRow["status"];
+}): boolean {
+  return liabilitiesEnabled && status !== "revoked" && creditAccountsMissingDueDate > 0;
+}
+
+// Group active credit-card accounts that have no due date by their plaid item id.
+export function countCreditAccountsMissingDueDateByItem(
+  accounts: readonly Pick<AccountRow, "plaid_item_id" | "type" | "is_active" | "next_payment_due_date">[]
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const account of accounts) {
+    if (account.type !== "credit" || !account.is_active || account.next_payment_due_date) continue;
+    counts.set(account.plaid_item_id, (counts.get(account.plaid_item_id) ?? 0) + 1);
+  }
+  return counts;
 }
 
 function plaidItemProductSet(item: Pick<PlaidItemRow, "available_products" | "billed_products">) {
@@ -3270,5 +3310,34 @@ export async function listPlaidConnections(client: FinanceSupabaseClient, userId
 
   const institutionRows = institutionResult.data as InstitutionRow[];
   const institutionById = byId(institutionRows);
-  return itemRows.map((item) => toConnectionSummary(item, institutionById.get(item.institution_id)));
+  const liabilitiesEnabled = getPlaidLinkOptionalProducts().includes(Products.Liabilities);
+  const creditAccountsMissingDueDate = liabilitiesEnabled
+    ? await loadCreditAccountsMissingDueDateByItem(client, userId)
+    : new Map<string, number>();
+
+  return itemRows.map((item) => toConnectionSummary(item, institutionById.get(item.institution_id), {
+    creditAccountsMissingDueDate: creditAccountsMissingDueDate.get(item.id) ?? 0,
+    liabilitiesEnabled
+  }));
+}
+
+async function loadCreditAccountsMissingDueDateByItem(client: FinanceSupabaseClient, userId: string) {
+  const result = await client
+    .from("accounts")
+    .select("plaid_item_id,type,is_active,next_payment_due_date")
+    .eq("user_id", userId)
+    .eq("type", "credit")
+    .eq("is_active", true)
+    .is("next_payment_due_date", null);
+
+  if (result.error) {
+    // A connection-list call must not fail just because the due-date upgrade hint
+    // can't be computed; fall back to "no upgradeable connections".
+    console.warn("plaid_credit_due_date_hint_query_failed", { message: result.error.message });
+    return new Map<string, number>();
+  }
+
+  return countCreditAccountsMissingDueDateByItem(
+    (result.data ?? []) as Pick<AccountRow, "plaid_item_id" | "type" | "is_active" | "next_payment_due_date">[]
+  );
 }

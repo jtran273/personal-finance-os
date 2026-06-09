@@ -26,18 +26,22 @@ row that already holds the transactions**. No new item, no duplicate rows.
 - We only request consent for products the item does not already have
   (`getPlaidUpdateModeConsentProducts`), so `additional_consented_products` never
   overlaps the item's existing products.
-- In Settings → Bank connections, the **Repair** button runs update mode. It is
-  shown today for items in an error/repair state; granting Liabilities to a
-  healthy item still needs a dedicated affordance (tracked under #290).
+- In Settings → Bank connections, update mode runs from either the **Repair**
+  button (items in an error/repair state) or the **Enable due dates** button.
+  The latter appears when `PLAID_ENABLE_LIABILITIES` is on and the connection
+  still has active credit-card accounts without a due date
+  (`canEnableLiabilities`). The hint is account-based, so it disappears on its
+  own once due dates populate.
 
 ### Steps
 
 1. Confirm `PLAID_ENABLE_LIABILITIES=true` is set in production and the deploy is
    live (see [the Plaid sync runbook](./verify-supabase-migrations-and-plaid-sync.md)).
-2. In Settings → Bank connections, run **Repair** (update mode) on the card's
-   institution. Approve the Liabilities consent screen in Plaid Link.
+2. In Settings → Bank connections, click **Enable due dates** (or **Repair**) on
+   the card's institution. Approve the Liabilities consent screen in Plaid Link.
 3. Click **Sync**. Verify the card row now has `next_payment_due_date` /
-   `minimum_payment_amount` populated and still has its transactions attached.
+   `minimum_payment_amount` populated and still has its transactions attached, and
+   that the **Enable due dates** button has disappeared for that connection.
 
 ## Cleaning up duplicates created by earlier re-adds
 

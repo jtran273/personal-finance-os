@@ -653,6 +653,7 @@ export function listDemoPlaidConnections() {
       autoSyncEnabled: item.auto_sync_enabled,
       availableProducts: item.available_products,
       billedProducts: item.billed_products,
+      canEnableLiabilities: false,
       consentExpiresAt: item.consent_expires_at,
       createdAt: item.created_at,
       errorCode: item.error_code,

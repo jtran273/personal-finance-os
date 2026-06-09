@@ -4,6 +4,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AccountType as PlaidAccountType, Products, type AccountBase, type Transaction } from "plaid";
 import {
   buildPlaidLinkTokenCreateRequest,
+  canConnectionEnableLiabilities,
+  countCreditAccountsMissingDueDateByItem,
   getPlaidLinkOptionalProducts,
   getPlaidUpdateModeConsentProducts,
   deletePlaidItemLedgerData,
@@ -219,6 +221,68 @@ test("update mode consent products exclude products the item already has", () =>
     ),
     [Products.Liabilities]
   );
+});
+
+test("credit accounts missing a due date are grouped by plaid item", () => {
+  const counts = countCreditAccountsMissingDueDateByItem([
+    { plaid_item_id: "item-a", type: "credit", is_active: true, next_payment_due_date: null },
+    { plaid_item_id: "item-a", type: "credit", is_active: true, next_payment_due_date: null },
+    { plaid_item_id: "item-a", type: "credit", is_active: true, next_payment_due_date: "2026-07-01" },
+    { plaid_item_id: "item-a", type: "credit", is_active: false, next_payment_due_date: null },
+    { plaid_item_id: "item-a", type: "depository", is_active: true, next_payment_due_date: null },
+    { plaid_item_id: "item-b", type: "credit", is_active: true, next_payment_due_date: null }
+  ]);
+
+  assert.equal(counts.get("item-a"), 2);
+  assert.equal(counts.get("item-b"), 1);
+});
+
+test("canConnectionEnableLiabilities requires the flag, a live item, and a missing due date", () => {
+  const base = { creditAccountsMissingDueDate: 1, liabilitiesEnabled: true, status: "active" as const };
+  assert.equal(canConnectionEnableLiabilities(base), true);
+  assert.equal(canConnectionEnableLiabilities({ ...base, liabilitiesEnabled: false }), false);
+  assert.equal(canConnectionEnableLiabilities({ ...base, creditAccountsMissingDueDate: 0 }), false);
+  assert.equal(canConnectionEnableLiabilities({ ...base, status: "revoked" }), false);
+});
+
+test("listPlaidConnections flags credit connections that can enable due dates when Liabilities is on", async () => {
+  const previous = process.env.PLAID_ENABLE_LIABILITIES;
+  process.env.PLAID_ENABLE_LIABILITIES = "true";
+  try {
+    const client = new PurgeFinanceClient({
+      institutions: [institutionRow()],
+      plaid_items: [plaidItemRow("ciphertext")],
+      accounts: [
+        row("card-no-due", { plaid_item_id: "item-old", type: "credit", is_active: true, next_payment_due_date: null })
+      ]
+    });
+
+    const [connection] = await listPlaidConnections(client.asClient(), userId);
+    assert.equal(connection?.canEnableLiabilities, true);
+  } finally {
+    if (previous === undefined) delete process.env.PLAID_ENABLE_LIABILITIES;
+    else process.env.PLAID_ENABLE_LIABILITIES = previous;
+  }
+});
+
+test("listPlaidConnections does not flag connections once due dates are populated", async () => {
+  const previous = process.env.PLAID_ENABLE_LIABILITIES;
+  process.env.PLAID_ENABLE_LIABILITIES = "true";
+  try {
+    const client = new PurgeFinanceClient({
+      institutions: [institutionRow()],
+      plaid_items: [plaidItemRow("ciphertext")],
+      accounts: [
+        row("card-due", { plaid_item_id: "item-old", type: "credit", is_active: true, next_payment_due_date: "2026-07-01" })
+      ]
+    });
+
+    const [connection] = await listPlaidConnections(client.asClient(), userId);
+    assert.equal(connection?.canEnableLiabilities, false);
+  } finally {
+    if (previous === undefined) delete process.env.PLAID_ENABLE_LIABILITIES;
+    else process.env.PLAID_ENABLE_LIABILITIES = previous;
+  }
 });
 
 test("pending raw transaction is planned for in-place posted replacement", () => {
@@ -1101,6 +1165,11 @@ class PurgeQueryBuilder {
 
   in(column: string, values: readonly unknown[]) {
     this.filters.push((row) => values.includes(row[column]));
+    return this;
+  }
+
+  is(column: string, value: unknown) {
+    this.filters.push((row) => (row[column] ?? null) === value);
     return this;
   }
 

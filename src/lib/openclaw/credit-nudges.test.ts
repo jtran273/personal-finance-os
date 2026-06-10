@@ -393,6 +393,53 @@ test("packet does not include raw plaid ids, masks-as-keys, or account number fi
   assert.doesNotMatch(serialized, /access_token|plaid_account_id|account_number|routing_number/i);
 });
 
+test("cycle-close packet is honest and points to Enable due dates when the close is only estimated", () => {
+  const row = makeRow({
+    amountOwed: 3000,
+    utilizationPercent: 60,
+    reportingDate: "2026-06-12",
+    reportingDateSource: "estimated_from_due_date",
+    reportingDateConfidence: "low"
+  });
+  const action = makeAction({
+    amountToTarget: 1501,
+    cashShortfall: 0,
+    recommendedPayment: 1501,
+    currentUtilizationPercent: 60,
+    reportingDate: "2026-06-12",
+    payByDate: "2026-06-09",
+    dateSource: "estimated_from_due_date",
+    dateConfidence: "low"
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], [action]));
+  assert.equal(packets.length, 1);
+  assert.equal(packets[0]?.trigger, "cycle_close_high_utilization");
+  assert.match(packets[0]?.rationale ?? "", /estimated from your due date/i);
+  assert.match(packets[0]?.rationale ?? "", /Enable due dates/i);
+  assert.match(packets[0]?.rationale ?? "", /around 2026-06-12/);
+});
+
+test("cycle-close packet does not add the estimate caveat when the close came from Plaid", () => {
+  const row = makeRow({
+    amountOwed: 3000,
+    utilizationPercent: 60,
+    reportingDate: "2026-06-12",
+    reportingDateSource: "actual_plaid_liability",
+    reportingDateConfidence: "high"
+  });
+  const action = makeAction({
+    amountToTarget: 1501,
+    cashShortfall: 0,
+    recommendedPayment: 1501,
+    currentUtilizationPercent: 60,
+    payByDate: "2026-06-09"
+  });
+  const packets = buildCreditOptimizationPackets(makeSummary([row], [action]));
+  assert.equal(packets.length, 1);
+  assert.doesNotMatch(packets[0]?.rationale ?? "", /estimated from your due date/i);
+  assert.match(packets[0]?.rationale ?? "", /reports on 2026-06-12/);
+});
+
 test("emits cash-safe sub-target packet for moderately high utilization", () => {
   const row = makeRow({
     amountOwed: 1800,

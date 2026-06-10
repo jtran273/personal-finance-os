@@ -387,6 +387,19 @@ function cardStatementTiming(row: LiabilityAccountSummary) {
   return `before it reports (around ${formatDate(row.reportingDate)})`;
 }
 
+/**
+ * Honest one-liner appended to low-confidence reporting-date copy. The estimate
+ * is anchored to the due date (or a guessed cycle), so it may look like the date
+ * autopay already covers. Point the user at the non-destructive "Enable due
+ * dates" (Plaid Liabilities update mode) flow, which makes Plaid return the real
+ * statement issue date and turns this into an accurate reporting date.
+ */
+export function cardStatementTimingCaveat(row: LiabilityAccountSummary): string | null {
+  if (!row.reportingDate) return null;
+  if (row.reportingDateSource !== "estimated_from_due_date") return null;
+  return "Estimated from your due date and may not match the real statement-close date. Use \"Enable due dates\" in Manage connections to get the exact reporting date — no need to disconnect.";
+}
+
 function cardActionLine(row: LiabilityAccountSummary) {
   if (row.amountOwed <= 0) return "Paid in full.";
 
@@ -401,7 +414,9 @@ function cardActionLine(row: LiabilityAccountSummary) {
 
   const paydown = cardUtilizationPaydown(row);
   if (paydown) {
-    return `Pay ${formatApproxMoney(paydown.amount)} ${cardStatementTiming(row)} to drop under ${paydown.targetPercent}%.`;
+    const base = `Pay ${formatApproxMoney(paydown.amount)} ${cardStatementTiming(row)} to drop under ${paydown.targetPercent}%.`;
+    const caveat = cardStatementTimingCaveat(row);
+    return caveat ? `${base} ${caveat}` : base;
   }
 
   if (row.utilizationPercent === null || !row.creditLimit || row.creditLimit <= 0) {

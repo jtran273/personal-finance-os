@@ -311,6 +311,137 @@ test("buildLiabilitiesDueSummary falls back to a weaker reporting estimate from 
   assert.equal(row?.reportingDateConfidence, "low");
 });
 
+test("buildLiabilitiesDueSummary infers the statement cycle from a recurring payment day", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-cadence",
+        type: "credit",
+        balance: 900,
+        creditLimit: 3000,
+        // No Plaid statement issue date, but a clear monthly autopay cadence
+        // on/around the 20th of each month.
+        nextPaymentDueDate: "2026-06-20"
+      })
+    ],
+    asOfDate: "2026-06-09",
+    cashAvailable: 1000,
+    transactions: [
+      transaction({ id: "p1", accountId: "card-cadence", amount: 400, date: "2026-05-20" }),
+      transaction({ id: "p2", accountId: "card-cadence", amount: 380, date: "2026-04-19" }),
+      transaction({ id: "p3", accountId: "card-cadence", amount: 410, date: "2026-03-21" })
+    ]
+  });
+
+  const row = summary.rows[0];
+  // Payments land ~the 20th, so the statement closes ~25 days earlier. The next
+  // close on/after Jun 9 is May 26 -> rolls to Jun 25 (day-of-month preserved).
+  assert.equal(row?.reportingDate, "2026-06-25");
+  assert.equal(row?.reportingDateSource, "inferred_from_statement_cycle");
+  assert.equal(row?.reportingDateConfidence, "medium");
+});
+
+test("buildLiabilitiesDueSummary infers the cycle even when no due date is known", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-no-due",
+        type: "credit",
+        balance: 500,
+        creditLimit: 2000
+        // No due date and no statement issue date at all.
+      })
+    ],
+    asOfDate: "2026-06-09",
+    cashAvailable: 1000,
+    transactions: [
+      transaction({ id: "p1", accountId: "card-no-due", amount: 200, date: "2026-05-15" }),
+      transaction({ id: "p2", accountId: "card-no-due", amount: 210, date: "2026-04-15" })
+    ]
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.reportingDateSource, "inferred_from_statement_cycle");
+  assert.equal(row?.reportingDateConfidence, "medium");
+  assert.ok(row?.reportingDate, "should still produce a reporting date from cadence");
+});
+
+test("buildLiabilitiesDueSummary keeps low confidence when only one payment is observed", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-one-pay",
+        type: "credit",
+        balance: 300,
+        creditLimit: 1200,
+        nextPaymentDueDate: "2026-05-26"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: [
+      transaction({ id: "p1", accountId: "card-one-pay", amount: 100, date: "2026-04-26" })
+    ]
+  });
+
+  const row = summary.rows[0];
+  // One payment is not a cadence; we must not promote confidence above the
+  // due-date estimate.
+  assert.equal(row?.reportingDateSource, "estimated_from_due_date");
+  assert.equal(row?.reportingDateConfidence, "low");
+});
+
+test("buildLiabilitiesDueSummary keeps low confidence when payment days are inconsistent", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-erratic",
+        type: "credit",
+        balance: 300,
+        creditLimit: 1200,
+        nextPaymentDueDate: "2026-05-26"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: [
+      transaction({ id: "p1", accountId: "card-erratic", amount: 100, date: "2026-04-03" }),
+      transaction({ id: "p2", accountId: "card-erratic", amount: 100, date: "2026-03-22" })
+    ]
+  });
+
+  const row = summary.rows[0];
+  assert.equal(row?.reportingDateSource, "estimated_from_due_date");
+  assert.equal(row?.reportingDateConfidence, "low");
+});
+
+test("buildLiabilitiesDueSummary still prefers a real Plaid statement issue date over payment cadence", () => {
+  const summary = buildLiabilitiesDueSummary({
+    accounts: [
+      account({
+        id: "card-statement-wins",
+        type: "credit",
+        balance: 900,
+        creditLimit: 3000,
+        lastStatementIssueDate: "2026-05-05",
+        nextPaymentDueDate: "2026-06-01"
+      })
+    ],
+    asOfDate: "2026-05-11",
+    cashAvailable: 1000,
+    transactions: [
+      transaction({ id: "p1", accountId: "card-statement-wins", amount: 400, date: "2026-05-20" }),
+      transaction({ id: "p2", accountId: "card-statement-wins", amount: 400, date: "2026-04-20" })
+    ]
+  });
+
+  const row = summary.rows[0];
+  // The actual statement issue date (and its projected next cycle) must win.
+  assert.equal(row?.reportingDate, "2026-06-05");
+  assert.equal(row?.reportingDateSource, "inferred_from_statement_cycle");
+  assert.equal(row?.reportingDateConfidence, "medium");
+});
+
 test("buildLiabilitiesDueSummary preserves actual issuer due dates from Plaid liabilities", () => {
   const summary = buildLiabilitiesDueSummary({
     accounts: [

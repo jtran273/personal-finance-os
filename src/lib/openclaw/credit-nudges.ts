@@ -149,9 +149,17 @@ function cycleCloseHighUtilizationPacket(
   const reportsPhrase = row.reportingDateConfidence === "high"
     ? `reports on ${shortDate(row.reportingDate)}`
     : `reports around ${shortDate(row.reportingDate)}`;
-  const rationale = targetAction.cashShortfall <= 0
+  const baseRationale = targetAction.cashShortfall <= 0
     ? `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and ${reportsPhrase}. A cash-safe ${money(payment)} payment by ${shortDate(targetAction.payByDate)} would bring it under ${targetAction.targetUtilizationPercent}%.`
     : `${display} is at ${row.utilizationPercent.toFixed(0)}% utilization and ${reportsPhrase}. ${money(payment)} fits above your cash buffer and reduces the likely reported balance.`;
+  // When the reporting date is only estimated from the due date, it can look
+  // like the date autopay already covers and the advice feels pointless. Be
+  // honest that it's an estimate and steer the user to the non-destructive
+  // "Enable due dates" (Plaid Liabilities update mode) flow that yields the real
+  // statement-close date.
+  const rationale = row.reportingDateSource === "estimated_from_due_date"
+    ? `${baseRationale} This close date is estimated from your due date — use "Enable due dates" in Manage connections for the exact reporting date (no disconnect needed).`
+    : baseRationale;
 
   return {
     id: `openclaw-outbox:credit:cycle:${row.accountId}:${row.reportingDate}:${targetAction.targetUtilizationPercent}`,

@@ -5,7 +5,6 @@ const DEMO_COOKIE_NAME = "ledger_demo";
 const responsiveRoutes = [
   { path: "/dashboard", heading: "Dashboard" },
   { path: "/transactions", heading: "Transactions" },
-  { path: "/agent-inbox", heading: "Agent inbox" },
   { path: "/review", heading: "Review queue" },
   { path: "/recurring", heading: "Recurring" },
   { path: "/accounts", heading: "Accounts" },
@@ -1005,10 +1004,13 @@ test("review queue exposes peer-to-peer, AI suggestion, and inline edit workflow
   await expectNoPageOverflow(page);
 });
 
-test("agent inbox keeps proposal context sanitized and links back to review and transaction detail", async ({ baseURL, context, page }) => {
+test("proposals section keeps context sanitized and links back to review and transaction detail", async ({ baseURL, context, page }) => {
   await enableDemoMode(context, baseURL!);
   await page.setViewportSize({ height: 900, width: 1440 });
   await page.goto("/agent-inbox");
+  // /agent-inbox now redirects into the unified Review tab.
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(page.getByRole("heading", { exact: true, name: "Proposals" })).toBeVisible();
 
   await expect(page.getByLabel("Agent inbox summary")).toContainText("Proposals");
   await expect(page.getByLabel("Agent inbox safety")).toContainText("sanitized");
@@ -1056,8 +1058,11 @@ test("audit, settings, and agent inbox expose accessible names for controls", as
   await expect(page.getByRole("heading", { exact: true, name: "Settings" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: /Sync on app open is (on|off)/ })).toBeDisabled();
 
+  // Agent inbox is now the "Proposals" section of the unified Review tab; /agent-inbox redirects there.
   await page.goto("/agent-inbox");
-  await expect(page.getByRole("heading", { exact: true, name: "Agent inbox" })).toBeVisible();
+  await expect(page).toHaveURL(/\/review$/);
+  await expect(page.getByRole("heading", { exact: true, name: "Review queue" })).toBeVisible();
+  await expect(page.getByRole("heading", { exact: true, name: "Proposals" })).toBeVisible();
   await expect(page.getByRole("link", { name: /Open transaction for/i }).first()).toBeVisible();
 });
 

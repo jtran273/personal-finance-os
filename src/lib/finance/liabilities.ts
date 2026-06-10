@@ -1,11 +1,30 @@
 import type { AccountRecord, CreditAprRecord, TransactionRecord } from "@/lib/db";
 
 const PAYMENT_MERCHANT_HINTS = /\b(payment|pmt|autopay|thank you|epay|online pay)\b/i;
+// A standard credit-card billing cycle is ~30 days, and the issuer "grace
+// period" between the statement close and the payment due date is typically
+// ~21-25 days. We use these only as a last-resort estimate when no statement
+// issue date and no observed payment cadence are available.
 const DEFAULT_BILLING_CYCLE_DAYS = 30;
 const DEFAULT_PAYMENT_GRACE_DAYS = 25;
 const DUE_SOON_DAYS = 7;
 const DEFAULT_PROCESSING_BUFFER_DAYS = 3;
 const UTILIZATION_TARGETS = [30, 10] as const;
+
+// Inference of the statement cycle from observed payment history.
+// Autopay (and most manual payers) pay on/near the due date each month, so the
+// recurring day-of-month of card payments approximates the due day. The
+// statement closes ~grace days earlier. We require at least this many distinct
+// monthly payments clustered on the same day-of-month before trusting the
+// signal, so a one-off transfer can't masquerade as a billing cadence.
+const MIN_OBSERVED_PAYMENTS_FOR_CYCLE = 2;
+// How far the observed payment days may spread (in days-of-month) and still be
+// treated as the same recurring autopay anchor. Issuers post a day early/late
+// around weekends/holidays, so a small spread is expected.
+const MAX_PAYMENT_DAY_SPREAD = 3;
+// Only consider payments from roughly the last few cycles; older cards can
+// change due dates and we don't want stale cadence to anchor the estimate.
+const PAYMENT_CADENCE_LOOKBACK_DAYS = 120;
 
 export type LiabilityTransactionInput = Pick<TransactionRecord, "accountId" | "amount" | "date" | "intent" | "merchant" | "plaidName">;
 
@@ -360,14 +379,73 @@ function purchaseAprPercentage(aprs: readonly CreditAprRecord[]) {
   return aprs.find((apr) => apr.aprType.toLowerCase().includes("purchase"))?.aprPercentage ?? null;
 }
 
+function dayOfMonth(iso: string) {
+  return parseIsoDate(iso).getUTCDate();
+}
+
+/**
+ * Infer a recurring autopay/payment anchor from observed card payments.
+ *
+ * Most cardholders (and all autopay users) pay on or right around the due date
+ * each month, so a cluster of monthly payments landing on roughly the same
+ * day-of-month is a reliable proxy for the issuer due day. The statement closes
+ * ~grace days before that. This lets us derive a statement-cycle estimate that
+ * is grounded in the user's actual data instead of the generic due-date+5 guess,
+ * and it works even when Plaid never returned a `nextPaymentDueDate`.
+ *
+ * Returns the inferred most-recent payment anchor date (ISO) when a consistent
+ * monthly cadence is detected, else null.
+ */
+function inferPaymentAnchorFromHistory(
+  accountId: string,
+  transactions: readonly LiabilityTransactionInput[],
+  asOfDate: string
+): string | null {
+  const payments = transactions
+    .filter((transaction) => {
+      if (transaction.accountId !== accountId) return false;
+      if (transaction.amount <= 0) return false;
+      const days = dayDifference(transaction.date, asOfDate);
+      if (days === null || days < 0 || days > PAYMENT_CADENCE_LOOKBACK_DAYS) return false;
+      return (
+        transaction.intent === "transfer" ||
+        PAYMENT_MERCHANT_HINTS.test(`${transaction.merchant} ${transaction.plaidName ?? ""}`)
+      );
+    })
+    // De-duplicate to one payment per calendar month so a card paid twice in one
+    // month (e.g. a correction) doesn't double-count toward the cadence.
+    .reduce<Map<string, string>>((byMonth, transaction) => {
+      const monthKey = transaction.date.slice(0, 7);
+      const existing = byMonth.get(monthKey);
+      if (!existing || transaction.date.localeCompare(existing) > 0) {
+        byMonth.set(monthKey, transaction.date);
+      }
+      return byMonth;
+    }, new Map());
+
+  const monthlyPayments = [...payments.values()].sort((a, b) => b.localeCompare(a));
+  if (monthlyPayments.length < MIN_OBSERVED_PAYMENTS_FOR_CYCLE) return null;
+
+  const days = monthlyPayments.map(dayOfMonth);
+  const spread = Math.max(...days) - Math.min(...days);
+  if (spread > MAX_PAYMENT_DAY_SPREAD) return null;
+
+  // Most recent observed payment is the freshest anchor for the cadence.
+  return monthlyPayments[0] ?? null;
+}
+
 function reportingDateMetadata({
   asOfDate,
   lastStatementIssueDate,
-  nextPaymentDueDate
+  nextPaymentDueDate,
+  paymentAnchorDate
 }: {
   asOfDate: string;
   lastStatementIssueDate: string | null | undefined;
   nextPaymentDueDate: string | null;
+  // Most-recent observed recurring payment date for this card, when a monthly
+  // payment cadence could be inferred from transaction history.
+  paymentAnchorDate?: string | null;
 }): {
   reportingDate: string | null;
   reportingDateSource: LiabilityReportingDateSource;
@@ -389,7 +467,24 @@ function reportingDateMetadata({
     };
   }
 
+  // No Plaid statement issue date. Before falling back to the weak due-date+5
+  // estimate, try to ground the cycle in the card's observed payment cadence:
+  // payments land ~on the due date, and the statement closed ~grace days before
+  // that. This is materially better than a generic guess, so we promote it to
+  // the same "inferred_from_statement_cycle" / medium tier.
+  if (paymentAnchorDate) {
+    const estimatedClose = addDays(paymentAnchorDate, -DEFAULT_PAYMENT_GRACE_DAYS);
+    return {
+      reportingDate: nextCycleDate(estimatedClose, asOfDate),
+      reportingDateConfidence: "medium",
+      reportingDateSource: "inferred_from_statement_cycle"
+    };
+  }
+
   if (nextPaymentDueDate) {
+    // Project the NEXT statement close: the due date for a statement lands
+    // ~grace days after that statement closed, so close ≈ dueDate − grace, then
+    // roll forward by whole months until it's on/after asOfDate.
     const estimatedReportingDate = addDays(nextPaymentDueDate, DEFAULT_BILLING_CYCLE_DAYS - DEFAULT_PAYMENT_GRACE_DAYS);
     return {
       reportingDate: nextCycleDate(estimatedReportingDate, asOfDate),
@@ -440,10 +535,14 @@ export function buildLiabilitiesDueSummary({
       const utilizationPercent = account.creditLimit && account.creditLimit > 0
         ? roundPercent((amountOwed / account.creditLimit) * 100)
         : null;
+      const paymentAnchorDate = account.lastStatementIssueDate
+        ? null
+        : inferPaymentAnchorFromHistory(account.id, sortedTransactions, today);
       const reportingDate = reportingDateMetadata({
         asOfDate: today,
         lastStatementIssueDate: account.lastStatementIssueDate,
-        nextPaymentDueDate: actualDueDate
+        nextPaymentDueDate: actualDueDate,
+        paymentAnchorDate
       });
       const isOverdue = account.liabilityIsOverdue ?? null;
       const status = isOverdue && amountOwed > 0 ? "overdue" : statusForDays(daysUntilDue, amountOwed);

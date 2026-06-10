@@ -42,6 +42,8 @@ function issueHeader(issue: string) {
       return "#111 LLM reimbursement candidate detector";
     case "#112":
       return "#112 Google Calendar production OAuth";
+    case "#290":
+      return "#290 Plaid Liabilities due dates/minimums";
     case "#236":
       return "#236 Supabase migrations and Plaid sync";
     default:
@@ -222,8 +224,51 @@ function migrationChecks(): Check[] {
   ];
 }
 
+function liabilitiesChecks(): Check[] {
+  const secretSet = configured("PLAID_PRODUCTION_SECRET") || configured("PLAID_SECRET");
+  const plaidEnv = process.env.PLAID_ENV?.trim().toLowerCase();
+  const missing = [
+    configured("PLAID_CLIENT_ID") ? null : "PLAID_CLIENT_ID",
+    configured("PLAID_ENV") ? null : "PLAID_ENV",
+    secretSet ? null : "PLAID_PRODUCTION_SECRET or PLAID_SECRET"
+  ].filter((value): value is string => Boolean(value));
+  const liabilitiesEnabled = envFlag("PLAID_ENABLE_LIABILITIES");
+
+  return [
+    {
+      detail: missing.length > 0
+        ? `Missing ${missing.join(", ")}.`
+        : "Plaid client id, environment, and secret are present. Values were not printed.",
+      issue: "#290",
+      label: "Plaid required env",
+      next: missing.length > 0
+        ? "Load production Plaid env before verifying due-date/minimum-payment activation."
+        : "Confirm Plaid approved the Liabilities product before enabling the optional product flag.",
+      status: missing.length > 0 ? "blocked" : "ok"
+    },
+    {
+      detail: plaidEnv ? `PLAID_ENV=${plaidEnv}.` : "PLAID_ENV is not set.",
+      issue: "#290",
+      label: "Plaid production mode",
+      next: plaidEnv === "production"
+        ? "Continue with Liabilities approval confirmation and card reconnect verification."
+        : "Use production Plaid env for the real due-date/minimum-payment verification; sandbox cannot close #290.",
+      status: plaidEnv === "production" ? "ok" : "warn"
+    },
+    {
+      detail: `PLAID_ENABLE_LIABILITIES=${liabilitiesEnabled ? "true" : "not true"}.`,
+      issue: "#290",
+      label: "Liabilities activation flag",
+      next: liabilitiesEnabled
+        ? "Verify approval in Plaid, then use Settings → Enable due dates to re-consent existing card connections."
+        : "Safe default: keep off until Plaid confirms Liabilities approval; then set true in production and reconnect cards.",
+      status: "warn"
+    }
+  ];
+}
+
 function printChecks(checks: Check[]) {
-  for (const issue of ["#111", "#112", "#236"]) {
+  for (const issue of ["#111", "#112", "#290", "#236"]) {
     console.log(issueHeader(issue));
     for (const check of checks.filter((item) => item.issue === issue)) {
       console.log(`${statusPrefix(check.status)} ${check.label}: ${check.detail}`);
@@ -238,17 +283,18 @@ function main() {
   const checks = [
     ...reimbursementChecks(),
     ...calendarChecks(),
+    ...liabilitiesChecks(),
     ...migrationChecks()
   ];
 
-  console.log("Production ops preflight for blocked issues #111, #112, #236\n");
+  console.log("Production ops preflight for blocked issues #111, #112, #290, #236\n");
   console.log("Scope: local files + env presence/shape only. No network calls. No secret values printed.\n");
   printChecks(checks);
 
   const blockedCount = checks.filter((check) => check.status === "blocked").length;
   const warningCount = checks.filter((check) => check.status === "warn").length;
   console.log(`Summary: ${blockedCount} blocked, ${warningCount} warning(s).`);
-  console.log("Run issue-specific helpers next: reimbursement:preflight, calendar:prod-smoke, migrations:verify.");
+  console.log("Run issue-specific helpers next: reimbursement:preflight, calendar:prod-smoke, migrations:verify, plus Plaid Liabilities approval/reconnect for #290.");
 
   if (strict && blockedCount > 0) {
     process.exit(1);

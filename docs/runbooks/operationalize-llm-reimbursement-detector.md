@@ -13,7 +13,8 @@ and caps). What remains is production activation and a real-data quality review.
 | --- | --- | --- |
 | `ENABLE_OPENAI_AUTO_REVIEW` | Master flag; `true` turns on OpenAI-backed review | off (`false`) |
 | `OPENAI_API_KEY` | OpenAI credential; absence forces the mock provider | mock provider |
-| `OPENAI_MODEL` | Model id used for suggestions | `gpt-5-nano` |
+| `OPENAI_MODEL` | Model id used for suggestions. If the id is unavailable, calls fail closed and fall back to the deterministic heuristic baseline. | `gpt-5.5` |
+| `OPENAI_REASONING_EFFORT` | Overrides reasoning effort on reasoning-capable models for both categorization and reimbursement judgment. Unset → categorization `low`, reimbursement `medium`. | unset |
 | `PROACTIVE_SCAN_ENABLED` | Enables the proactive scan path | off (`false`) |
 | `PROACTIVE_SCAN_MAX_TX` | Per-run transaction cap | `100` |
 | `PROACTIVE_SCAN_HISTORY_MAX_TX` | Historical backfill transaction cap | `750` |

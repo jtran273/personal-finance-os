@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createOpenAiSuggestionAdapter } from "./openai-provider";
+import { createOpenAiSuggestionAdapter, getOpenAiSuggestionModel } from "./openai-provider";
 import type {
   AiSuggestionAdapter,
   ReimbursementCandidateAiSuggestion,
@@ -334,4 +334,73 @@ test("OpenAI adapter preserves baseline reimbursement inflows when output omits 
   );
 
   assert.deepEqual(suggestion.suggestedInflowIds, ["tx-zelle"]);
+});
+
+test("getOpenAiSuggestionModel defaults to the upgraded model and honors OPENAI_MODEL", () => {
+  const original = process.env.OPENAI_MODEL;
+  try {
+    delete process.env.OPENAI_MODEL;
+    assert.equal(getOpenAiSuggestionModel(), "gpt-5.5");
+    assert.equal(getOpenAiSuggestionModel("gpt-test"), "gpt-test");
+    process.env.OPENAI_MODEL = "gpt-5.5-mini";
+    assert.equal(getOpenAiSuggestionModel(), "gpt-5.5-mini");
+  } finally {
+    if (original === undefined) delete process.env.OPENAI_MODEL;
+    else process.env.OPENAI_MODEL = original;
+  }
+});
+
+test("reimbursement candidate request sends medium reasoning effort on reasoning models", async () => {
+  let capturedBody: Record<string, unknown> | null = null;
+  const reasoningAdapter = createOpenAiSuggestionAdapter({ apiKey: "sk-test", fallback, model: "gpt-5.5" });
+  await withMockedFetch(
+    async (_url, init) => {
+      capturedBody = JSON.parse(String((init as RequestInit).body));
+      return new Response(JSON.stringify({
+        output_text: JSON.stringify({
+          confidence: 0.8,
+          question: "Did Alex pay you back for Ace Hotel?",
+          reason: "Zelle a few days later covers the full charge.",
+          signals: ["peer payment"],
+          suggestedInflowIds: ["tx-zelle"],
+          suggestedIntent: "reimbursable"
+        }),
+        status: "completed"
+      }), { status: 200 });
+    },
+    () => reasoningAdapter.suggestReimbursementCandidate!(reimbursementRequest)
+  );
+
+  assert.equal((capturedBody as unknown as { model: string }).model, "gpt-5.5");
+  assert.deepEqual((capturedBody as unknown as { reasoning?: { effort?: string } }).reasoning, { effort: "medium" });
+});
+
+test("OPENAI_REASONING_EFFORT overrides the per-task reasoning effort", async () => {
+  const original = process.env.OPENAI_REASONING_EFFORT;
+  let capturedBody: Record<string, unknown> | null = null;
+  try {
+    process.env.OPENAI_REASONING_EFFORT = "high";
+    const reasoningAdapter = createOpenAiSuggestionAdapter({ apiKey: "sk-test", fallback, model: "gpt-5.5" });
+    await withMockedFetch(
+      async (_url, init) => {
+        capturedBody = JSON.parse(String((init as RequestInit).body));
+        return new Response(JSON.stringify({
+          output_text: JSON.stringify({
+            categoryName: "Software / AI Tools",
+            confidence: 0.96,
+            intent: "business",
+            merchantName: "OpenAI",
+            reason: "Known AI software merchant.",
+            recurring: true
+          }),
+          status: "completed"
+        }), { status: 200 });
+      },
+      () => reasoningAdapter.suggestTransaction(request)
+    );
+    assert.deepEqual((capturedBody as unknown as { reasoning?: { effort?: string } }).reasoning, { effort: "high" });
+  } finally {
+    if (original === undefined) delete process.env.OPENAI_REASONING_EFFORT;
+    else process.env.OPENAI_REASONING_EFFORT = original;
+  }
 });

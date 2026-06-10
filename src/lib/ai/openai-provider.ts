@@ -14,10 +14,26 @@ import type {
 } from "./types";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
-const DEFAULT_OPENAI_MODEL = "gpt-5-nano";
-const OPENAI_PROVIDER_VERSION = "openai-suggestions-v2";
-const OPENAI_REQUEST_TIMEOUT_MS = 25_000;
+// Stronger default model for a smarter, more accurate AI product. Overridable
+// per-deploy with OPENAI_MODEL (e.g. a dated snapshot or a -mini variant) — if
+// the configured id is unavailable the call fails closed and we fall back to the
+// deterministic heuristic baseline, so a bad id degrades quality but never crashes.
+const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+const OPENAI_PROVIDER_VERSION = "openai-suggestions-v3";
+const OPENAI_REQUEST_TIMEOUT_MS = 30_000;
 const MERCHANT_RULE_SHORT_CIRCUIT_CONFIDENCE = 0.85;
+
+// Reasoning effort for the Responses API on reasoning-capable models. The user
+// wants a smarter product over raw latency/cost, so categorization runs at "low"
+// (high volume, still a real reasoning pass) and the reimbursement judgment runs
+// at "medium" (low volume, benefits most from deliberate reasoning). A single
+// OPENAI_REASONING_EFFORT override applies to both when set.
+const DEFAULT_CATEGORIZATION_REASONING_EFFORT = "low";
+const DEFAULT_REIMBURSEMENT_REASONING_EFFORT = "medium";
+
+function resolveReasoningEffort(fallback: string) {
+  return process.env.OPENAI_REASONING_EFFORT?.trim() || fallback;
+}
 
 export const OPENAI_AI_SUGGESTION_PROVIDER: AiSuggestionProviderDescriptor = {
   id: "openai-transaction-review",
@@ -210,7 +226,7 @@ async function callOpenAiReimbursementCandidate({
         role: "user"
       }
     ],
-    max_output_tokens: isReasoningModel ? 3000 : 500,
+    max_output_tokens: isReasoningModel ? 4000 : 600,
     model,
     text: {
       format: {
@@ -244,7 +260,7 @@ async function callOpenAiReimbursementCandidate({
   };
 
   if (isReasoningModel) {
-    body.reasoning = { effort: "minimal" };
+    body.reasoning = { effort: resolveReasoningEffort(DEFAULT_REIMBURSEMENT_REASONING_EFFORT) };
   }
 
   if (request.cacheKey) {
@@ -417,7 +433,7 @@ async function callOpenAi({
   };
 
   if (isReasoningModel) {
-    body.reasoning = { effort: "minimal" };
+    body.reasoning = { effort: resolveReasoningEffort(DEFAULT_CATEGORIZATION_REASONING_EFFORT) };
   }
 
   if (request.cacheKey) {
@@ -494,16 +510,25 @@ function buildSystemPrompt(request: TransactionSuggestionRequest) {
     });
 
   const sections = [
-    "You categorize personal bank transactions. Return ONE JSON object matching the schema.",
+    "You are Tally's transaction analyst. You clean up and categorize a single personal bank transaction.",
+    "Return ONE JSON object matching the schema. Reason carefully, but output only the JSON.",
     "",
     "Rules:",
-    "- Pick categoryName from the user's category list verbatim.",
-    "- Never return 'Uncategorized'. If nothing clearly fits, choose the closest concrete category and set confidence below 0.7.",
-    "- intent ∈ {personal, business, shared, reimbursable, transfer}. Default to personal unless evidence says otherwise.",
-    "- merchantName: human-friendly normalization (e.g. 'AMZN MKTP US*ABC' → 'Amazon').",
-    "- recurring: true only for clearly repeating subscriptions/bills.",
-    "- confidence ∈ [0,1]. ≥0.85 = sure. 0.7–0.85 = likely. <0.7 = user should review.",
-    "- reason: ONE short sentence (< 80 chars) citing the evidence you used.",
+    "- categoryName: choose from the user's category list VERBATIM (exact spelling). Match the merchant's real-world business, not just the Plaid hint.",
+    "- Never return 'Uncategorized'. If nothing clearly fits, pick the closest concrete category and set confidence below 0.7.",
+    "- merchantName: human-friendly normalization of the raw descriptor (e.g. 'AMZN MKTP US*ABC' → 'Amazon', 'SQ *BLUE BOTTLE' → 'Blue Bottle Coffee', 'TST* THE GROVE' → 'The Grove').",
+    "- recurring: true ONLY for clearly repeating subscriptions/bills (Netflix, rent, insurance, utilities, gym). One-off purchases are false.",
+    "",
+    "intent — pick the most specific that the evidence supports (default personal):",
+    "- personal: an ordinary expense for yourself.",
+    "- business: a work/business expense (your own business or job).",
+    "- reimbursable: you fronted money you expect to be paid back for (work travel, covered a friend's share and they'll repay you).",
+    "- shared: a cost split with someone (roommate, partner, group) where you each owe a portion.",
+    "- transfer: money moving between your OWN accounts, a credit-card payment, an ATM withdrawal, or cashing out Venmo/Zelle to yourself — NOT a real expense or income.",
+    "Note: a negative amount is an expense/outflow; a positive amount is income/refund/inflow. Don't tag everyday solo purchases as shared/reimbursable without a real signal.",
+    "",
+    "- confidence ∈ [0,1]. ≥0.85 = sure. 0.7–0.85 = likely. <0.7 = user should review. Be honest; a calibrated low score is more useful than false certainty.",
+    "- reason: ONE short sentence (< 80 chars) citing the concrete evidence you used.",
     "",
     `Available categories: ${categoryList.join(", ") || "Shopping"}`
   ];
@@ -535,16 +560,55 @@ function buildUserPrompt(request: TransactionSuggestionRequest, baseline: Transa
 
 function buildReimbursementCandidateSystemPrompt() {
   return [
-    "You review sanitized personal-finance transaction summaries for possible reimbursements.",
-    "Return ONE JSON object matching the schema.",
+    "You are Tally's reimbursement judge. Tally's matcher has already paired ONE expense with the",
+    "nearby peer-payment inflow(s) most likely to repay it. Your job is to judge how plausible that",
+    "match really is, and only flag it when it's worth asking the user. Return ONE JSON object.",
     "",
-    "Rules:",
-    "- Decide only whether Tally should ask the user about this candidate.",
-    "- suggestedIntent must be shared or reimbursable.",
-    "- Use only the provided app-owned ids in suggestedInflowIds.",
-    "- question should be concise and ask what the user needs to clarify.",
-    "- Do not claim a transaction is reimbursed; this is only a proposal."
+    "Be skeptical — precision matters far more than recall. A real reimbursement usually means:",
+    "- Timing: the inflow lands ON or a FEW DAYS AFTER the expense (someone paying you back). Large gaps,",
+    "  or an inflow well before the expense, are weak.",
+    "- Amount: the inflow (or the inflows summed) plausibly equals the whole bill OR a clean split of it",
+    "  (about ½, ⅓, ¼). An inflow that's a tiny fraction, or larger than the expense, is weak.",
+    "- Counterparty: an identifiable person (e.g. 'Venmo Maya R', 'Zelle from Jordan'). Generic or",
+    "  merchant-looking sources are weak.",
+    "",
+    "Calibrate confidence honestly: ≥0.75 only for a clean, close, amount-consistent match from a named",
+    "person; 0.5–0.75 plausible but worth confirming; <0.5 when the match is weak — Tally will then NOT",
+    "nag the user. Do not invent matches.",
+    "",
+    "suggestedIntent: 'reimbursable' = someone is paying you back for money you fronted; 'shared' = the",
+    "cost was split and the inflow is their share.",
+    "Use ONLY the provided app-owned inflow ids in suggestedInflowIds — drop any that don't fit.",
+    "question: ONE natural sentence naming the person and amount when known",
+    "(e.g. \"Did Maya pay you back $44 for Milestone Tavern on Jun 1?\"). Never claim it's already reimbursed.",
+    "reason: ONE short sentence citing the timing/amount/counterparty evidence."
   ].join("\n");
+}
+
+function reimbursementDayGap(expenseDate: string, inflowDate: string) {
+  const expenseMs = Date.parse(`${expenseDate}T12:00:00.000Z`);
+  const inflowMs = Date.parse(`${inflowDate}T12:00:00.000Z`);
+  if (!Number.isFinite(expenseMs) || !Number.isFinite(inflowMs)) return null;
+  return Math.round((inflowMs - expenseMs) / 86_400_000);
+}
+
+function describeReimbursementInflow(
+  inflow: ReimbursementCandidateAiRequest["candidateInflows"][number],
+  expense: ReimbursementCandidateAiRequest["transaction"]
+) {
+  const expenseAmount = Math.abs(expense.amount);
+  const gap = reimbursementDayGap(expense.date, inflow.date);
+  const gapText = gap === null
+    ? "unknown timing"
+    : gap === 0
+      ? "same day"
+      : gap > 0
+        ? `${gap}d after expense`
+        : `${Math.abs(gap)}d BEFORE expense`;
+  const ratioText = expenseAmount > 0
+    ? `${Math.round((inflow.amount / expenseAmount) * 100)}% of the bill`
+    : "n/a";
+  return `- ${inflow.id}: ${inflow.date} (${gapText}), ${inflow.merchant}, +${inflow.amount.toFixed(2)} (${ratioText}), ${inflow.category}`;
 }
 
 function buildReimbursementCandidateUserPrompt(
@@ -552,31 +616,35 @@ function buildReimbursementCandidateUserPrompt(
   baseline: ReimbursementCandidateAiSuggestion
 ) {
   const inflows = request.candidateInflows.map((inflow) =>
-    `- ${inflow.id}: ${inflow.date}, ${inflow.merchant}, +${inflow.amount.toFixed(2)}, ${inflow.category}`
+    describeReimbursementInflow(inflow, request.transaction)
   );
+  const inflowSum = request.candidateInflows.reduce((total, inflow) => total + inflow.amount, 0);
+  const expenseAmount = Math.abs(request.transaction.amount);
   const patterns = (request.historicalPatterns ?? []).slice(0, 8).map((pattern) =>
     `- ${pattern.merchant ?? "(merchant)"} / ${pattern.category ?? "(category)"} → ${pattern.suggestedIntent ?? "shared"}${pattern.counterparty ? ` with ${pattern.counterparty}` : ""}`
   );
 
   return [
-    "Candidate expense:",
+    "Expense to judge:",
     `- id: ${request.transaction.id}`,
     `- date: ${request.transaction.date}`,
     `- merchant: ${request.transaction.merchant}`,
-    `- amount: ${request.transaction.amount.toFixed(2)}`,
+    `- amount: ${request.transaction.amount.toFixed(2)} (you paid ${expenseAmount.toFixed(2)})`,
     `- category: ${request.transaction.category}`,
     `- current_intent: ${request.transaction.intent}`,
     "",
-    "Nearby inflows:",
-    ...(inflows.length > 0 ? inflows : ["- none"]),
+    `Matched inflow(s) — combined ${inflowSum.toFixed(2)} (${expenseAmount > 0 ? `${Math.round((inflowSum / expenseAmount) * 100)}% of the bill` : "n/a"}):`,
+    ...(inflows.length > 0 ? inflows : ["- none (the matcher found no peer inflow — return confidence below 0.4)"]),
     "",
-    "Heuristic reasons:",
+    "Matcher notes:",
     ...request.heuristicReasons.slice(0, 6).map((reason) => `- ${reason}`),
     "",
-    patterns.length > 0 ? "Historical patterns:" : "Historical patterns: none",
+    patterns.length > 0 ? "User's past reimbursement patterns:" : "User's past reimbursement patterns: none",
     ...patterns,
     "",
-    `Baseline suggestion: ${baseline.suggestedIntent}, confidence ${baseline.confidence.toFixed(2)}, question "${baseline.question}".`
+    "Judge the match per the rules. If timing, amount, and counterparty all line up, score high and write a",
+    "specific question; if any is weak, lower the confidence accordingly.",
+    `(Heuristic baseline for reference only: ${baseline.suggestedIntent}, confidence ${baseline.confidence.toFixed(2)}.)`
   ].join("\n");
 }
 

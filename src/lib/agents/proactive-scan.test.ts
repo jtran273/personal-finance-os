@@ -352,7 +352,7 @@ test("proactive scan result includes safe suggestion provider metadata", async (
     assert.equal(result.status, "succeeded");
     assert.equal(result.openAiAutoReviewEnabled, true);
     assert.equal(result.suggestionProviderKind, "openai");
-    assert.match(result.suggestionProviderVersion ?? "", /^openai-suggestions-v2:/);
+    assert.match(result.suggestionProviderVersion ?? "", /^openai-suggestions-v3:/);
   } finally {
     if (previousOpenAiKey === undefined) {
       delete process.env.OPENAI_API_KEY;
